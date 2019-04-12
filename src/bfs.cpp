@@ -13,7 +13,6 @@
 
 #define MAX_THREADS_PER_BLOCK 256
 
-//Structure to hold a node information
 struct Node
 {
     int starting;
@@ -28,6 +27,13 @@ struct Node
 //----------------------------------------------------------
 void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *h_graph_edges, char *h_graph_mask, char *h_updating_graph_mask, char *h_graph_visited, int *h_cost_ref)
 {
+    #ifdef PROFILING
+        timer cpu_timer;
+        double cpu_time = 0.0;
+        cpu_timer.reset();
+        cpu_timer.start();
+    #endif
+
     char shouldStop;
     do
     {
@@ -60,13 +66,18 @@ void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *
             }
         }
     } while (!shouldStop);
+
+    #ifdef PROFILING
+        cpu_timer.stop();
+        cpu_time = cpu_timer.getTimeInSeconds();
+        std::cout << "reference time (sequential)(s):" << cpu_time << std::endl;
+    #endif
 }
 //----------------------------------------------------------
-//--breadth first search on GPUs
+//--breadth first search on the OpenCL device
 //----------------------------------------------------------
-void run_bfs_gpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *h_graph_edges, char *h_graph_mask, char *h_updating_graph_mask, char *h_graph_visited, int *h_cost) throw(std::string)
+void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *h_graph_edges, char *h_graph_mask, char *h_updating_graph_mask, char *h_graph_visited, int *h_cost)
 {
-    //int number_elements = height*width;
     char h_over;
     cl_mem d_graph_nodes, d_graph_edges, d_graph_mask, d_updating_graph_mask, d_graph_visited, d_cost, d_over;
 
@@ -149,7 +160,7 @@ void run_bfs_gpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *
     }
     catch (std::string msg)
     {
-        throw("in run_bfs_gpu -> " + msg);
+        throw("in run_bfs_opencl -> " + msg);
     }
 
     //--4 release cl resources.
@@ -179,11 +190,17 @@ int main(int argc, char *argv[])
 
     try
     {
-        if (argc != 2)
+        if (argc < 2)
         {
             fprintf(stderr, "Usage: %s <input_file>\n", argv[0]);
+            fprintf(stderr, "Flags:\n");
+            fprintf(stderr, "\t-g <int>: work group size.\n");
+            fprintf(stderr, "\t-d <int>: device id to use.\n");
+
             exit(0);
         }
+
+        _clCmdParams(argc, argv);
 
         //Read in Graph from a file
         char *input_f = argv[1];
@@ -192,11 +209,14 @@ int main(int argc, char *argv[])
         if (!fp)
         {
             printf("Error Reading graph file\n");
-            return 0;
+            return 1;
         }
 
         // Distribute threads across multiple Blocks if necessary
-        fscanf(fp, "%d", &no_of_nodes);
+        if(fscanf(fp, "%d", &no_of_nodes) != 1) {
+            printf("Failed to read amount of nodes from graph file.");
+            return 2;
+        }
         work_group_size = no_of_nodes > MAX_THREADS_PER_BLOCK ? MAX_THREADS_PER_BLOCK : no_of_nodes;
 
         // Allocate host memory
@@ -209,7 +229,10 @@ int main(int argc, char *argv[])
         for (int i = 0; i < no_of_nodes; i++)
         {
             int start, edgeno;
-            fscanf(fp, "%d %d", &start, &edgeno);
+            if(fscanf(fp, "%d %d", &start, &edgeno) != 2) { 
+                printf("Failed to read node entry %d from graph file.", i);
+                continue;
+            }
             h_graph_nodes[i].starting = start;
             h_graph_nodes[i].no_of_edges = edgeno;
             h_graph_mask[i] = false;
@@ -219,20 +242,27 @@ int main(int argc, char *argv[])
 
         // Read the source node from the file
         int source;
-        fscanf(fp, "%d", &source);
+        if(fscanf(fp, "%d", &source) != 1) {
+            printf("Failed to read source node from file.");
+            return 3;
+        }
 
         // Set the source node as true in the mask
         h_graph_mask[source] = true;
         h_graph_visited[source] = true;
 
-        fscanf(fp, "%d", &edge_list_size);
+        if(fscanf(fp, "%d", &edge_list_size) != 1) {
+            printf("Failed to read edge list size from file.");
+            return 4;
+        }
 
         int *h_graph_edges = (int *)malloc(sizeof(int) * edge_list_size);
         for (int i = 0; i < edge_list_size; i++)
         {
             int id, cost;
-            fscanf(fp, "%d", &id);
-            fscanf(fp, "%d", &cost);
+            if(fscanf(fp, "%d", &id) != 1 || fscanf(fp, "%d", &cost) != 1) {
+                printf("Failed to read id or cost '%d' from file.", i);
+            }
             h_graph_edges[i] = id;
         }
 
@@ -250,8 +280,8 @@ int main(int argc, char *argv[])
         h_cost_ref[source] = 0;
 
         //---------------------------------------------------------
-        //--gpu entry
-        run_bfs_gpu(no_of_nodes, h_graph_nodes, edge_list_size, h_graph_edges, h_graph_mask, h_updating_graph_mask, h_graph_visited, h_cost);
+        //--opencl entry
+        run_bfs_opencl(no_of_nodes, h_graph_nodes, edge_list_size, h_graph_edges, h_graph_mask, h_updating_graph_mask, h_graph_visited, h_cost);
 
         //---------------------------------------------------------
         //--cpu entry

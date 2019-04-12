@@ -6,6 +6,8 @@
 #ifndef _CL_HELPER_
 #define _CL_HELPER_
 
+// Determine if necessary for the target platform. NVIDIA GPUs still seem to be running on 1.2.
+#define CL_USE_DEPRECATED_OPENCL_1_2_APIS
 #include <CL/cl.h>
 #include <vector>
 #include <iostream>
@@ -36,8 +38,9 @@ struct oclHandleStruct oclHandles;
 char kernel_file[100] = "Kernels.cl";
 int total_kernels = 2;
 string kernel_names[2] = {"BFS_1", "BFS_2"};
-int work_group_size = 512;
+size_t work_group_size = 512;
 int device_id_inuse = 0;
+bool cpu = false;
 
 /*
  * Converts the contents of a file into a string
@@ -98,14 +101,19 @@ string FileToString(const string fileName)
 //
 void _clCmdParams(int argc, char *argv[])
 {
-	for (int i = 0; i < argc; i++)
+	for (int i = 2; i < argc; i++)
 	{
+        if(argv[i][0] != '-') {
+            continue;
+        }
+
 		switch (argv[i][1])
 		{
 		case 'g': //--g stands for size of work group
 			if (++i < argc)
 			{
-				sscanf(argv[i], "%u", &work_group_size);
+				sscanf(argv[i], "%lu", &work_group_size);
+                printf("Setting work group size to %lu\n", work_group_size);
 			}
 			else
 			{
@@ -117,6 +125,7 @@ void _clCmdParams(int argc, char *argv[])
 			if (++i < argc)
 			{
 				sscanf(argv[i], "%u", &device_id_inuse);
+                printf("Setting device id to %u\n", device_id_inuse);
 			}
 			else
 			{
@@ -124,6 +133,10 @@ void _clCmdParams(int argc, char *argv[])
 				throw;
 			}
 			break;
+        case 'c':
+            cpu = true;
+            printf("Attempting to use CPU instead of GPU.\n");
+            break;
 		default:;
 		}
 	}
@@ -172,7 +185,7 @@ void _clInit()
 		throw(string("InitCL()::Error: Getting platform ids (clGetPlatformIDs)"));
 
 	/* Select the target platform. Default: first platform */
-	targetPlatform = allPlatforms[0];
+	targetPlatform = allPlatforms[cpu ? 1 : 0];
 	for (int i = 0; i < numPlatforms; i++)
 	{
 		char pbuff[128];
@@ -184,15 +197,18 @@ void _clInit()
 		if (resultCL != CL_SUCCESS)
 			throw(string("InitCL()::Error: Getting platform info (clGetPlatformInfo)"));
 
-		//printf("vedor is %s\n",pbuff);
+		printf("Vendor of platform %d is %s\n", i, pbuff);
 	}
+
+    printf("Using platform %d.\n", cpu ? 1 : 0);
+
 	free(allPlatforms);
 
 	//-----------------------------------------------
 	//--cambine-2: create an OpenCL context
 	cl_context_properties cprops[3] = {CL_CONTEXT_PLATFORM, (cl_context_properties)targetPlatform, 0};
 	oclHandles.context = clCreateContextFromType(cprops,
-												 CL_DEVICE_TYPE_GPU,
+												 cpu ? CL_DEVICE_TYPE_CPU : CL_DEVICE_TYPE_GPU,
 												 NULL,
 												 NULL,
 												 &resultCL);
@@ -202,7 +218,7 @@ void _clInit()
 	//-----------------------------------------------
 	//--cambine-3: detect OpenCL devices
 	/* First, get the size of device list */
-	oclHandles.cl_status = clGetDeviceIDs(targetPlatform, CL_DEVICE_TYPE_GPU, 0, NULL, &deviceListSize);
+	oclHandles.cl_status = clGetDeviceIDs(targetPlatform, cpu ? CL_DEVICE_TYPE_CPU : CL_DEVICE_TYPE_GPU, 0, NULL, &deviceListSize);
 	if (oclHandles.cl_status != CL_SUCCESS)
 	{
 		throw(string("exception in _clInit -> clGetDeviceIDs"));
@@ -219,12 +235,32 @@ void _clInit()
 		throw(string("InitCL()::Error: Could not allocate memory."));
 
 	/* Next, get the device list data */
-	oclHandles.cl_status = clGetDeviceIDs(targetPlatform, CL_DEVICE_TYPE_GPU, deviceListSize,
+	oclHandles.cl_status = clGetDeviceIDs(targetPlatform, cpu ? CL_DEVICE_TYPE_CPU : CL_DEVICE_TYPE_GPU, deviceListSize,
 										  oclHandles.devices, NULL);
 	if (oclHandles.cl_status != CL_SUCCESS)
 	{
 		throw(string("exception in _clInit -> clGetDeviceIDs-2"));
 	}
+
+	cl_bool result;
+    resultCL = clGetDeviceInfo(oclHandles.devices[DEVICE_ID_inuse], CL_DEVICE_AVAILABLE, sizeof(result), &result, NULL);
+
+    if (resultCL != CL_SUCCESS)
+		throw(string("InitCL()::Error: Getting device info (clGetDeviceInfo)"));
+
+    if (!result) {
+    	throw(string("Device %d is not available.\n", DEVICE_ID_inuse));
+    }
+
+	char pbuff[128];
+    resultCL = clGetDeviceInfo(oclHandles.devices[DEVICE_ID_inuse], CL_DEVICE_VENDOR, sizeof(pbuff), pbuff, NULL);
+
+    if (resultCL != CL_SUCCESS)
+		throw(string("InitCL()::Error: Getting device info (clGetDeviceInfo-2)"));
+
+	printf("Vendor of selected device %d is %s\n", DEVICE_ID_inuse, pbuff);
+
+
 	//-----------------------------------------------
 	//--cambine-4: Create an OpenCL command queue
 	oclHandles.queue = clCreateCommandQueue(oclHandles.context,
@@ -417,7 +453,7 @@ void _clRelease()
 }
 //--------------------------------------------------------
 //--cambine:create buffer and then copy data from host to device
-cl_mem _clCreateAndCpyMem(int size, void *h_mem_source) throw(string)
+cl_mem _clCreateAndCpyMem(int size, void *h_mem_source)
 {
 	cl_mem d_mem;
 	d_mem = clCreateBuffer(oclHandles.context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, size, h_mem_source, &oclHandles.cl_status);
@@ -431,7 +467,7 @@ cl_mem _clCreateAndCpyMem(int size, void *h_mem_source) throw(string)
 //-------------------------------------------------------
 //--cambine:	create read only  buffer for devices
 //--date:	17/01/2011
-cl_mem _clMallocRW(int size, void *h_mem_ptr) throw(string)
+cl_mem _clMallocRW(int size, void *h_mem_ptr)
 {
 	cl_mem d_mem;
 	d_mem = clCreateBuffer(oclHandles.context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, size, h_mem_ptr, &oclHandles.cl_status);
@@ -445,7 +481,7 @@ cl_mem _clMallocRW(int size, void *h_mem_ptr) throw(string)
 //-------------------------------------------------------
 //--cambine:	create read and write buffer for devices
 //--date:	17/01/2011
-cl_mem _clMalloc(int size, void *h_mem_ptr) throw(string)
+cl_mem _clMalloc(int size, void *h_mem_ptr)
 {
 	cl_mem d_mem;
 	d_mem = clCreateBuffer(oclHandles.context, CL_MEM_WRITE_ONLY | CL_MEM_COPY_HOST_PTR, size, h_mem_ptr, &oclHandles.cl_status);
@@ -459,7 +495,7 @@ cl_mem _clMalloc(int size, void *h_mem_ptr) throw(string)
 //-------------------------------------------------------
 //--cambine:	transfer data from host to device
 //--date:	17/01/2011
-void _clMemcpyH2D(cl_mem d_mem, int size, const void *h_mem_ptr) throw(string)
+void _clMemcpyH2D(cl_mem d_mem, int size, const void *h_mem_ptr)
 {
 	oclHandles.cl_status = clEnqueueWriteBuffer(oclHandles.queue, d_mem, CL_TRUE, 0, size, h_mem_ptr, 0, NULL, NULL);
 #ifdef ERRMSG
@@ -470,7 +506,7 @@ void _clMemcpyH2D(cl_mem d_mem, int size, const void *h_mem_ptr) throw(string)
 //--------------------------------------------------------
 //--cambine:create buffer and then copy data from host to device with pinned
 // memory
-cl_mem _clCreateAndCpyPinnedMem(int size, float *h_mem_source) throw(string)
+cl_mem _clCreateAndCpyPinnedMem(int size, float *h_mem_source)
 {
 	cl_mem d_mem, d_mem_pinned;
 	float *h_mem_pinned = NULL;
@@ -515,7 +551,7 @@ cl_mem _clCreateAndCpyPinnedMem(int size, float *h_mem_source) throw(string)
 
 //--------------------------------------------------------
 //--cambine:create write only buffer on device
-cl_mem _clMallocWO(int size) throw(string)
+cl_mem _clMallocWO(int size)
 {
 	cl_mem d_mem;
 	d_mem = clCreateBuffer(oclHandles.context, CL_MEM_WRITE_ONLY, size, 0, &oclHandles.cl_status);
@@ -528,7 +564,7 @@ cl_mem _clMallocWO(int size) throw(string)
 
 //--------------------------------------------------------
 //transfer data from device to host
-void _clMemcpyD2H(cl_mem d_mem, int size, void *h_mem) throw(string)
+void _clMemcpyD2H(cl_mem d_mem, int size, void *h_mem)
 {
 	oclHandles.cl_status = clEnqueueReadBuffer(oclHandles.queue, d_mem, CL_TRUE, 0, size, h_mem, 0, 0, 0);
 #ifdef ERRMSG
@@ -567,7 +603,7 @@ void _clMemcpyD2H(cl_mem d_mem, int size, void *h_mem) throw(string)
 
 //--------------------------------------------------------
 //set kernel arguments
-void _clSetArgs(int kernel_id, int arg_idx, void *d_mem, int size = 0) throw(string)
+void _clSetArgs(int kernel_id, int arg_idx, void *d_mem, int size = 0)
 {
 	if (!size)
 	{
@@ -648,7 +684,7 @@ void _clSetArgs(int kernel_id, int arg_idx, void *d_mem, int size = 0) throw(str
 #endif
 	}
 }
-void _clFinish() throw(string)
+void _clFinish()
 {
 	oclHandles.cl_status = clFinish(oclHandles.queue);
 #ifdef ERRMSG
@@ -676,7 +712,7 @@ void _clFinish() throw(string)
 }
 //--------------------------------------------------------
 //--cambine:enqueue kernel
-void _clInvokeKernel(int kernel_id, int work_items, int work_group_size) throw(string)
+void _clInvokeKernel(int kernel_id, size_t work_items, size_t work_group_size)
 {
 	cl_uint work_dim = WORK_DIM;
 	cl_event e[1];
@@ -746,7 +782,7 @@ void _clInvokeKernel(int kernel_id, int work_items, int work_group_size) throw(s
 	//     throw(string("exception in _clEnqueueNDRange() -> clWaitForEvents"));
 	// #endif
 }
-void _clInvokeKernel2D(int kernel_id, int range_x, int range_y, int group_x, int group_y) throw(string)
+void _clInvokeKernel2D(int kernel_id, size_t range_x, size_t range_y, size_t group_x, size_t group_y)
 {
 	cl_uint work_dim = WORK_DIM;
 	size_t local_work_size[] = {group_x, group_y};
@@ -823,7 +859,7 @@ void _clInvokeKernel2D(int kernel_id, int range_x, int range_y, int group_x, int
 
 //--------------------------------------------------------
 //release OpenCL objects
-void _clFree(cl_mem ob) throw(string)
+void _clFree(cl_mem ob)
 {
 	if (ob != NULL)
 		oclHandles.cl_status = clReleaseMemObject(ob);
@@ -836,7 +872,7 @@ void _clFree(cl_mem ob) throw(string)
 		break;
 	case CL_OUT_OF_RESOURCES:
 		oclHandles.error_str += "CL_OUT_OF_RESOURCES";
-		break;
+	    break;
 	case CL_OUT_OF_HOST_MEMORY:
 		oclHandles.error_str += "CL_OUT_OF_HOST_MEMORY";
 		break;

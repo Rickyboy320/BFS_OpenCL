@@ -32,12 +32,12 @@ void print_matrix(datatype *A, int height, int width){
 //-------------------------------------------------------------------
 #define MAX_RELATIVE_ERROR  .002
 template<typename datatype>
-void verify_array(const datatype *cpuResults, const datatype *gpuResults, const int size){
+void verify_array(const datatype *cpuResults, const datatype *clResults, const int size){
 
     char passed = true; 
 #pragma omp parallel for
     for (int i=0; i<size; i++){
-      if (fabs(cpuResults[i] - gpuResults[i]) / cpuResults[i] > MAX_RELATIVE_ERROR){
+      if (fabs(cpuResults[i] - clResults[i]) / cpuResults[i] > MAX_RELATIVE_ERROR){
          passed = false; 
       }
     }
@@ -50,12 +50,12 @@ void verify_array(const datatype *cpuResults, const datatype *gpuResults, const 
     return ;
 }
 template<typename datatype>
-void compare_results(const datatype *cpu_results, const datatype *gpu_results, const int size){
+void compare_results(const datatype *cpuResults, const datatype *clResults, const int size){
 
     char passed = true; 
 //#pragma omp parallel for
     for (int i=0; i<size; i++){
-      if (cpu_results[i]!=gpu_results[i]){
+      if (cpuResults[i]!=clResults[i]){
          passed = false; 
       }
     }

@@ -24,8 +24,11 @@ res:$(SRC)
 debug: $(SRC)
 	$(CC) $(CC_FLAGS) $(SRC) -o $(EXE) -lOpenCL -D ERRMSG -D PTX_MSG -D RES_MSG -D PROFILING
 
-run: debug
+run-gpu: debug
 	./$(EXE) ../data/graph1MW_6.txt
+
+run-cpu: debug
+	./$(EXE) ../data/graph1MW_6.txt -c
 
 clean: $(SRC)
 	rm -f $(EXE) $(EXE).linkinfo result*
