@@ -18,10 +18,10 @@ double timer::get_CPU_speed_in_MHz()
     char     buffer[256], *colon;
 
     while (infile.good()) {
-	infile.getline(buffer, 256);
+    infile.getline(buffer, 256);
 
-	if (strncmp("cpu MHz", buffer, 7) == 0 && (colon = strchr(buffer, ':')) != 0)
-	    return atof(colon + 2);
+    if (strncmp("cpu MHz", buffer, 7) == 0 && (colon = strchr(buffer, ':')) != 0)
+        return atof(colon + 2);
     }
 #endif
 
@@ -37,8 +37,8 @@ void timer::print_time(ostream &str, const char *which, double time) const
     time = 1000.0 * time / CPU_speed_in_MHz;
 
     while (time >= 999.5 && unit[1] != 0) {
-	time /= 1000.0;
-	++ unit;
+    time /= 1000.0;
+    ++ unit;
     }
 
     str << which << " = " << setprecision(3) << setw(4) << time << *unit;
@@ -50,16 +50,16 @@ ostream &timer::print(ostream &str)
     str << left << setw(25) << (name != 0 ? name : "timer") << ": " << right;
 
     if (CPU_speed_in_MHz == 0)
-	str << "could not determine CPU speed\n";
+    str << "could not determine CPU speed\n";
     else if (count > 0) {
-	double total = static_cast<double>(total_time);
+    double total = static_cast<double>(total_time);
 
-	print_time(str, "avg", total / static_cast<double>(count));
-	print_time(str, ", total", total);
-	str << ", count = " << setw(9) << count << '\n';
+    print_time(str, "avg", total / static_cast<double>(count));
+    print_time(str, ", total", total);
+    str << ", count = " << setw(9) << count << '\n';
     }
     else
-	str << "not used\n";
+    str << "not used\n";
 
     return str;
 }

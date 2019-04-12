@@ -6,36 +6,36 @@
 
 class timer {
     public:
-			   timer(const char *name = 0);
-			   timer(const char *name, std::ostream &write_on_exit);
+               timer(const char *name = 0);
+               timer(const char *name, std::ostream &write_on_exit);
 
-			   ~timer();
+               ~timer();
 
-	void		   start(), stop();
-	void		   reset();
-	std::ostream   	   &print(std::ostream &);
+    void		   start(), stop();
+    void		   reset();
+    std::ostream   	   &print(std::ostream &);
 
-	double             getTimeInSeconds();
+    double             getTimeInSeconds();
 
     private:
-	void		   print_time(std::ostream &, const char *which, double time) const;
+    void		   print_time(std::ostream &, const char *which, double time) const;
 
-	union {
-	    long long	   total_time;
-	    struct {
+    union {
+        long long	   total_time;
+        struct {
 #if defined __PPC__
-		int	   high, low;
+        int	   high, low;
 #else
-		int	   low, high;
+        int	   low, high;
 #endif
-	    };
-	};
+        };
+    };
 
-	unsigned long long count;
-	const char	   *const name;
-	std::ostream	   *const write_on_exit;
+    unsigned long long count;
+    const char	   *const name;
+    std::ostream	   *const write_on_exit;
 
-	static double	   CPU_speed_in_MHz, get_CPU_speed_in_MHz();
+    static double	   CPU_speed_in_MHz, get_CPU_speed_in_MHz();
 };
 
 
@@ -70,7 +70,7 @@ inline timer::timer(const char *name, std::ostream &write_on_exit)
 inline timer::~timer()
 {
     if (write_on_exit != 0)
-	print(*write_on_exit);
+    print(*write_on_exit);
 }
 
 
@@ -85,14 +85,14 @@ inline void timer::start()
 #elif (defined __GNUC__ || defined __INTEL_COMPILER) && (defined __i386 || defined __x86_64)
     asm volatile
     (
-	"rdtsc\n\t"
-	"subl %%eax, %0\n\t"
-	"sbbl %%edx, %1"
+    "rdtsc\n\t"
+    "subl %%eax, %0\n\t"
+    "sbbl %%edx, %1"
     :
-	"+m" (low), "+m" (high)
+    "+m" (low), "+m" (high)
     :
     :
-	"eax", "edx"
+    "eax", "edx"
     );
 #else
 #error Compiler/Architecture not recognized
@@ -111,14 +111,14 @@ inline void timer::stop()
 #elif (defined __GNUC__ || defined __INTEL_COMPILER) && (defined __i386 || defined __x86_64)
     asm volatile
     (
-	"rdtsc\n\t"
-	"addl %%eax, %0\n\t"
-	"adcl %%edx, %1"
+    "rdtsc\n\t"
+    "addl %%eax, %0\n\t"
+    "adcl %%edx, %1"
     :
-	"+m" (low), "+m" (high)
+    "+m" (low), "+m" (high)
     :
     :
-	"eax", "edx"
+    "eax", "edx"
     );
 #endif
 

@@ -17,15 +17,15 @@ void fill(datatype *A, const int n, const datatype maxi){
 //--print matrix
 template<typename datatype>
 void print_matrix(datatype *A, int height, int width){
-	for(int i=0; i<height; i++){
-		for(int j=0; j<width; j++){
-			int idx = i*width + j;
-			std::cout<<A[idx]<<" ";
-		}
-		std::cout<<std::endl;
-	}
+    for(int i=0; i<height; i++){
+        for(int j=0; j<width; j++){
+            int idx = i*width + j;
+            std::cout<<A[idx]<<" ";
+        }
+        std::cout<<std::endl;
+    }
 
-	return;
+    return;
 }
 //-------------------------------------------------------------------
 //--verify results
