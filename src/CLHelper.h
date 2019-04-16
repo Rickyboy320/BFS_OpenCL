@@ -586,8 +586,20 @@ void _clMemcpyD2H(cl_mem d_mem, int size, void *h_mem)
     case CL_INVALID_EVENT_WAIT_LIST:
         oclHandles.error_str += "CL_INVALID_EVENT_WAIT_LIST";
         break;
+    case CL_MISALIGNED_SUB_BUFFER_OFFSET:
+        oclHandles.error_str += "CL_MISALIGNED_SUB_BUFFER_OFFSET";
+        break;
+    case CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST:
+        oclHandles.error_str += "CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST";
+        break;
     case CL_MEM_OBJECT_ALLOCATION_FAILURE:
         oclHandles.error_str += "CL_MEM_OBJECT_ALLOCATION_FAILURE";
+        break;
+    case CL_INVALID_OPERATION:
+        oclHandles.error_str += "CL_INVALID_OPERATION";
+        break;
+    case CL_OUT_OF_RESOURCES:
+        oclHandles.error_str += "CL_OUT_OF_RESOURCES";
         break;
     case CL_OUT_OF_HOST_MEMORY:
         oclHandles.error_str += "CL_OUT_OF_HOST_MEMORY";

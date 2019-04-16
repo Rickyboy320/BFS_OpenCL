@@ -1,6 +1,6 @@
 CC = g++
 
-SRC = bfs.cpp timer.cc
+SRC = bfs.cpp timer.cc matrixmarket/mmio.c
 
 CC_FLAGS = -g -O3
 
@@ -25,10 +25,10 @@ debug: $(SRC)
 	$(CC) $(CC_FLAGS) $(SRC) -o $(EXE) -lOpenCL -D ERRMSG -D PTX_MSG -D RES_MSG -D PROFILING
 
 run-gpu: debug
-	./$(EXE) ../data/graph1MW_6.txt
+	./$(EXE) ../data/webbase-1M.mtx
 
 run-cpu: debug
-	./$(EXE) ../data/graph1MW_6.txt -c
+	./$(EXE) ../data/webbase-1M.mtx -c
 
 clean: $(SRC)
 	rm -f $(EXE) $(EXE).linkinfo result*

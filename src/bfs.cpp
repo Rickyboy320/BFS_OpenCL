@@ -10,6 +10,8 @@
 
 #include "CLHelper.h"
 #include "util.h"
+#include "matrixmarket/mmio.h"
+
 
 #define MAX_THREADS_PER_BLOCK 256
 
@@ -25,7 +27,7 @@ struct Node
 //--date:	26/01/2011
 //--note: width is changed to the new_width
 //----------------------------------------------------------
-void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *h_graph_edges, char *h_graph_mask, char *h_updating_graph_mask, char *h_graph_visited, int *h_cost_ref)
+void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *h_graph_edges, char* h_graph_mask, char* h_updating_graph_mask, char* h_graph_visited, int *h_cost_ref)
 {
     #ifdef PROFILING
         timer cpu_timer;
@@ -43,7 +45,7 @@ void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *
             if (h_graph_mask[tid])
             {
                 h_graph_mask[tid] = false;
-                for (int i = h_graph_nodes[tid].starting; i < h_graph_nodes[tid].no_of_edges + h_graph_nodes[tid].starting; i++)
+                for (int i = h_graph_nodes[tid].starting; i < h_graph_nodes[tid].starting + h_graph_nodes[tid].no_of_edges; i++)
                 {
                     int id = h_graph_edges[i]; //--cambine: node id is connected with node tid
                     if (!h_graph_visited[id])
@@ -78,7 +80,7 @@ void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *
 //----------------------------------------------------------
 void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *h_graph_edges, char *h_graph_mask, char *h_updating_graph_mask, char *h_graph_visited, int *h_cost)
 {
-    char h_over;
+    char h_over = false;
     cl_mem d_graph_nodes, d_graph_edges, d_graph_mask, d_updating_graph_mask, d_graph_visited, d_cost, d_over;
 
     try
@@ -139,7 +141,6 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
 
             //work_items = no_of_nodes;
             _clInvokeKernel(kernel_id, no_of_nodes, work_group_size);
-
             _clMemcpyD2H(d_over, sizeof(char), &h_over);
         } while (h_over);
 
@@ -180,13 +181,18 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
 //----------------------------------------------------------
 int main(int argc, char *argv[])
 {
+    MM_typecode matcode;
+
     int no_of_nodes;
-    int edge_list_size;
 
     Node *h_graph_nodes;
     char *h_graph_mask;
     char *h_updating_graph_mask;
     char *h_graph_visited;
+    int *h_graph_edges;
+    int *I;
+    int *J;
+    double *val;
 
     try
     {
@@ -212,61 +218,81 @@ int main(int argc, char *argv[])
             return 1;
         }
 
-        // Distribute threads across multiple Blocks if necessary
-        if(fscanf(fp, "%d", &no_of_nodes) != 1) {
-            printf("Failed to read amount of nodes from graph file.");
-            return 2;
+        if (mm_read_banner(fp, &matcode) != 0)
+        {
+            printf("Could not process Matrix Market banner.\n");
+            exit(1);
         }
+
+        // Only supports a subset of the Matrix Market data types.
+        if (mm_is_complex(matcode) && mm_is_matrix(matcode) && 
+                mm_is_sparse(matcode) )
+        {
+            printf("Sorry, this application does not support ");
+            printf("Market Market type: [%s]\n", mm_typecode_to_str(matcode));
+            exit(1);
+        }
+
+        // find out size of sparse matrix ....
+        int N, nz;   
+        if (mm_read_mtx_crd_size(fp, &no_of_nodes, &N, &nz) != 0)
+            exit(1);
+
+        if(no_of_nodes != N) {
+            printf("[WARNING] Not sure if non-square matrices work properly...");
+        }
+
+        /* reserve memory for matrices */
+        I = (int *) malloc(nz * sizeof(int));
+        J = (int *) malloc(nz * sizeof(int));
+        val = (double *) malloc(nz * sizeof(double));
+
+        /* NOTE: when reading in doubles, ANSI C requires the use of the "l"  */
+        /*   specifier as in "%lg", "%lf", "%le", otherwise errors will occur */
+        /*  (ANSI C X3.159-1989, Sec. 4.9.6.2, p. 136 lines 13-15)            */
+
+        printf("Amt nodes: %d\n", no_of_nodes);
+        std::vector<int>* construction_list = new std::vector<int>[no_of_nodes];
+
+        for (int i = 0; i < nz; i++)
+        {
+            if(fscanf(fp, "%d %d %lg\n", &I[i], &J[i], &val[i]) != 3) {
+                printf("Failed to read line %d\n", i);
+            }
+            I[i]--;  /* adjust from 1-based to 0-based */
+            J[i]--;
+
+            construction_list[I[i]].push_back(J[i]);
+        }
+
+        if (fp !=stdin) fclose(fp);
+
+        int edge_list_size = nz;
+        h_graph_edges = (int*) malloc(sizeof(int) * edge_list_size);
+
+        // Distribute threads across multiple Blocks if necessary
         work_group_size = no_of_nodes > MAX_THREADS_PER_BLOCK ? MAX_THREADS_PER_BLOCK : no_of_nodes;
 
-        // Allocate host memory
+        // Allocate host memory    
         h_graph_nodes = (Node *)malloc(sizeof(Node) * no_of_nodes);
         h_graph_mask = (char *)malloc(sizeof(char) * no_of_nodes);
         h_updating_graph_mask = (char *)malloc(sizeof(char) * no_of_nodes);
         h_graph_visited = (char *)malloc(sizeof(char) * no_of_nodes);
 
-        // Initialize the memory
+        int index = 0;
         for (int i = 0; i < no_of_nodes; i++)
         {
-            int start, edgeno;
-            if(fscanf(fp, "%d %d", &start, &edgeno) != 2) { 
-                printf("Failed to read node entry %d from graph file.", i);
-                continue;
-            }
-            h_graph_nodes[i].starting = start;
-            h_graph_nodes[i].no_of_edges = edgeno;
+            h_graph_nodes[i].starting = index;
+            h_graph_nodes[i].no_of_edges = construction_list[i].size();
+            std::copy(construction_list[i].begin(), construction_list[i].end(), &h_graph_edges[index]);
+            index += construction_list[i].size();
+
             h_graph_mask[i] = false;
             h_updating_graph_mask[i] = false;
-            h_graph_visited[i] = false;
+            h_graph_visited[i] = false;   
         }
 
-        // Read the source node from the file
-        int source;
-        if(fscanf(fp, "%d", &source) != 1) {
-            printf("Failed to read source node from file.");
-            return 3;
-        }
-
-        // Set the source node as true in the mask
-        h_graph_mask[source] = true;
-        h_graph_visited[source] = true;
-
-        if(fscanf(fp, "%d", &edge_list_size) != 1) {
-            printf("Failed to read edge list size from file.");
-            return 4;
-        }
-
-        int *h_graph_edges = (int *)malloc(sizeof(int) * edge_list_size);
-        for (int i = 0; i < edge_list_size; i++)
-        {
-            int id, cost;
-            if(fscanf(fp, "%d", &id) != 1 || fscanf(fp, "%d", &cost) != 1) {
-                printf("Failed to read id or cost '%d' from file.", i);
-            }
-            h_graph_edges[i] = id;
-        }
-
-        fclose(fp);
+        int source = 0;
 
         // Allocate mem for the result on host side
         int *h_cost = (int *)malloc(sizeof(int) * no_of_nodes);
@@ -281,6 +307,8 @@ int main(int argc, char *argv[])
 
         //---------------------------------------------------------
         //--opencl entry
+        h_graph_mask[source] = true;
+        h_graph_visited[source] = true;
         run_bfs_opencl(no_of_nodes, h_graph_nodes, edge_list_size, h_graph_edges, h_graph_mask, h_updating_graph_mask, h_graph_visited, h_cost);
 
         //---------------------------------------------------------
@@ -308,10 +336,15 @@ int main(int argc, char *argv[])
     }
 
     // Release host memory
+    free(I);
+    free(J);
+    free(val);
     free(h_graph_nodes);
+    
     free(h_graph_mask);
     free(h_updating_graph_mask);
     free(h_graph_visited);
+    free(h_graph_edges);
 
     return 0;
 }
