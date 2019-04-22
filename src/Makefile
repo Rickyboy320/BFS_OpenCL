@@ -25,10 +25,10 @@ debug: $(SRC)
 	$(CC) $(CC_FLAGS) $(SRC) -o $(EXE) -lOpenCL -D ERRMSG -D PTX_MSG -D RES_MSG -D PROFILING
 
 run-gpu: debug
-	./$(EXE) ../data/webbase-1M.mtx
+	./$(EXE) ../data/road_usa.mtx
 
 run-cpu: debug
-	./$(EXE) ../data/webbase-1M.mtx -c
+	./$(EXE) ../data/road_usa.mtx -c
 
 clean: $(SRC)
 	rm -f $(EXE) $(EXE).linkinfo result*

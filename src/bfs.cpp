@@ -3,6 +3,7 @@
 #include <iostream>
 #include <string>
 #include <cstring>
+#include <set>
 
 #ifdef PROFILING
 #include "timer.h"
@@ -36,10 +37,12 @@ void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *
         cpu_timer.start();
     #endif
 
-    char shouldStop;
+    int amtloops = 0;
+    char shouldContinue;
     do
     {
-        shouldStop = true;
+        amtloops++;
+        shouldContinue = false;
         for (int tid = 0; tid < no_of_nodes; tid++)
         {
             if (h_graph_mask[tid])
@@ -63,11 +66,13 @@ void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *
             {
                 h_graph_mask[tid] = true;
                 h_graph_visited[tid] = true;
-                shouldStop = false;
+                shouldContinue = true;
                 h_updating_graph_mask[tid] = false;
             }
         }
-    } while (!shouldStop);
+    } while (shouldContinue);
+
+    printf("Took %d loops\n", amtloops);
 
     #ifdef PROFILING
         cpu_timer.stop();
@@ -83,10 +88,29 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
     char h_over = false;
     cl_mem d_graph_nodes, d_graph_edges, d_graph_mask, d_updating_graph_mask, d_graph_visited, d_cost, d_over;
 
+#ifdef PROFILING
+    timer full_timer = timer("full");
+    timer alloc_timer = timer("alloc");
+    timer h2d_timer = timer("h2d");
+    timer d2h_timer = timer("d2h");
+    timer kernel_timer = timer("kernel");
+    full_timer.reset();
+    alloc_timer.reset();
+    h2d_timer.reset();
+    d2h_timer.reset();
+    kernel_timer.reset();
+        
+    full_timer.start();
+#endif
+
     try
     {
         //--1 transfer data from host to device
         _clInit();
+
+#ifdef PROFILING
+        alloc_timer.start();
+#endif
         d_graph_nodes = _clMalloc(no_of_nodes * sizeof(Node), h_graph_nodes);
         d_graph_edges = _clMalloc(edge_list_size * sizeof(int), h_graph_edges);
         d_graph_mask = _clMallocRW(no_of_nodes * sizeof(char), h_graph_mask);
@@ -96,6 +120,10 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
         d_cost = _clMallocRW(no_of_nodes * sizeof(int), h_cost);
         d_over = _clMallocRW(sizeof(char), &h_over);
 
+#ifdef PROFILING
+        alloc_timer.stop();
+        h2d_timer.start();
+#endif
         _clMemcpyH2D(d_graph_nodes, no_of_nodes * sizeof(Node), h_graph_nodes);
         _clMemcpyH2D(d_graph_edges, edge_list_size * sizeof(int), h_graph_edges);
         _clMemcpyH2D(d_graph_mask, no_of_nodes * sizeof(char), h_graph_mask);
@@ -103,18 +131,27 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
         _clMemcpyH2D(d_graph_visited, no_of_nodes * sizeof(char), h_graph_visited);
         _clMemcpyH2D(d_cost, no_of_nodes * sizeof(int), h_cost);
 
-        //--2 invoke kernel
 #ifdef PROFILING
-        timer kernel_timer;
-        double kernel_time = 0.0;
-        kernel_timer.reset();
-        kernel_timer.start();
+        h2d_timer.stop();
 #endif
 
+        //--2 invoke kernel
+
+        int amtloops = 0;
         do
         {
-            h_over = false;
+            amtloops++;
+
+            h_over = false; 
+#ifdef PROFILING
+            h2d_timer.start();
+#endif
             _clMemcpyH2D(d_over, sizeof(char), &h_over);
+
+#ifdef PROFILING
+            h2d_timer.stop();
+            kernel_timer.start();
+#endif
 
             //--kernel 0
             int kernel_id = 0;
@@ -141,22 +178,33 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
 
             //work_items = no_of_nodes;
             _clInvokeKernel(kernel_id, no_of_nodes, work_group_size);
+#ifdef PROFILING
+            //Force awiting for kernel to finish.
+            _clFinish();
+
+            kernel_timer.stop();
+            d2h_timer.start();
+#endif
             _clMemcpyD2H(d_over, sizeof(char), &h_over);
+
+#ifdef PROFILING
+            d2h_timer.stop();
+#endif
         } while (h_over);
 
+
+        printf("Took %d loops\n", amtloops);
         _clFinish();
 
 #ifdef PROFILING
-        kernel_timer.stop();
-        kernel_time = kernel_timer.getTimeInSeconds();
+        d2h_timer.start();
 #endif
 
         //--3 transfer data from device to host
         _clMemcpyD2H(d_cost, no_of_nodes * sizeof(int), h_cost);
 
 #ifdef PROFILING
-        //--statistics
-        std::cout << "kernel time(s):" << kernel_time << std::endl;
+        d2h_timer.stop();
 #endif
     }
     catch (std::string msg)
@@ -173,6 +221,18 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
     _clFree(d_cost);
     _clFree(d_over);
     _clRelease();
+
+#ifdef PROFILING
+    full_timer.stop();
+
+    //--statistics
+    std::cout << full_timer;
+    std::cout << alloc_timer;
+    std::cout << d2h_timer;
+    std::cout << h2d_timer;
+    std::cout << kernel_timer;
+#endif
+
 }
 //----------------------------------------------------------
 //--cambine:	main function
@@ -252,28 +312,47 @@ int main(int argc, char *argv[])
         /*  (ANSI C X3.159-1989, Sec. 4.9.6.2, p. 136 lines 13-15)            */
 
         printf("Amt nodes: %d\n", no_of_nodes);
-        std::vector<int>* construction_list = new std::vector<int>[no_of_nodes];
+        std::set<int>* construction_set = new std::set<int>[no_of_nodes];
 
-        for (int i = 0; i < nz; i++)
+        if(mm_is_pattern(matcode))
         {
-            if(fscanf(fp, "%d %d %lg\n", &I[i], &J[i], &val[i]) != 3) {
-                printf("Failed to read line %d\n", i);
+           for (int i = 0; i < nz; i++)
+            {
+                if(fscanf(fp, "%d %d\n", &I[i], &J[i]) != 2) {
+                    printf("Failed to read line %d\n", i);
+                }
+                I[i]--;  /* adjust from 1-based to 0-based */
+                J[i]--;
+
+                construction_set[I[i]].insert(J[i]);
+                construction_set[J[i]].insert(I[i]);
             }
-            I[i]--;  /* adjust from 1-based to 0-based */
-            J[i]--;
-
-            construction_list[I[i]].push_back(J[i]);
         }
+        else
+        {
+            for (int i = 0; i < nz; i++)
+            {
+                if(fscanf(fp, "%d %d %lg\n", &I[i], &J[i], &val[i]) != 3) {
+                    printf("Failed to read line %d\n", i);
+                }
+                I[i]--;  /* adjust from 1-based to 0-based */
+                J[i]--;
 
+                construction_set[I[i]].insert(J[i]);
+                construction_set[J[i]].insert(I[i]);
+            }
+        }
+        
+        
         if (fp !=stdin) fclose(fp);
 
-        int edge_list_size = nz;
+        int edge_list_size = nz * 2;
         h_graph_edges = (int*) malloc(sizeof(int) * edge_list_size);
 
         // Distribute threads across multiple Blocks if necessary
         work_group_size = no_of_nodes > MAX_THREADS_PER_BLOCK ? MAX_THREADS_PER_BLOCK : no_of_nodes;
 
-        // Allocate host memory    
+        // Allocate host memory
         h_graph_nodes = (Node *)malloc(sizeof(Node) * no_of_nodes);
         h_graph_mask = (char *)malloc(sizeof(char) * no_of_nodes);
         h_updating_graph_mask = (char *)malloc(sizeof(char) * no_of_nodes);
@@ -283,9 +362,9 @@ int main(int argc, char *argv[])
         for (int i = 0; i < no_of_nodes; i++)
         {
             h_graph_nodes[i].starting = index;
-            h_graph_nodes[i].no_of_edges = construction_list[i].size();
-            std::copy(construction_list[i].begin(), construction_list[i].end(), &h_graph_edges[index]);
-            index += construction_list[i].size();
+            h_graph_nodes[i].no_of_edges = construction_set[i].size();
+            std::copy(construction_set[i].begin(), construction_set[i].end(), &h_graph_edges[index]);
+            index += construction_set[i].size();
 
             h_graph_mask[i] = false;
             h_updating_graph_mask[i] = false;
@@ -305,6 +384,8 @@ int main(int argc, char *argv[])
         h_cost[source] = 0;
         h_cost_ref[source] = 0;
 
+        printf("Running opencl...\n");
+
         //---------------------------------------------------------
         //--opencl entry
         h_graph_mask[source] = true;
@@ -320,6 +401,8 @@ int main(int argc, char *argv[])
             h_updating_graph_mask[i] = false;
             h_graph_visited[i] = false;
         }
+
+        printf("Running cpu...\n");
 
         // Set the source node as true in the mask
         h_graph_mask[source] = true;

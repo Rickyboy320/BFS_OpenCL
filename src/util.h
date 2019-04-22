@@ -56,6 +56,7 @@ void compare_results(const datatype *cpuResults, const datatype *clResults, cons
     #pragma omp parallel for
     for (int i=0; i<size; i++){
       if (cpuResults[i]!=clResults[i]){
+         // printf("Diff: %d != %d\n", clResults[i], cpuResults[i]);
          passed = false; 
       }
     }
