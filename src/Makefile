@@ -1,6 +1,6 @@
 CC = g++
 
-SRC = bfs.cpp timer.cc matrixmarket/mmio.c
+SRC = bfs.cpp matrixmarket/mmio.c
 
 CC_FLAGS = -g -O3
 
