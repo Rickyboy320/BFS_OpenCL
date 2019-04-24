@@ -113,7 +113,9 @@ void _clCmdParams(int argc, char *argv[])
             if (++i < argc)
             {
                 sscanf(argv[i], "%lu", &work_group_size);
+#ifdef VERBOSE
                 printf("Setting work group size to %lu\n", work_group_size);
+#endif
             }
             else
             {
@@ -125,7 +127,9 @@ void _clCmdParams(int argc, char *argv[])
             if (++i < argc)
             {
                 sscanf(argv[i], "%u", &device_id_inuse);
+#ifdef VERBOSE
                 printf("Setting device id to %u\n", device_id_inuse);
+#endif
             }
             else
             {
@@ -135,7 +139,9 @@ void _clCmdParams(int argc, char *argv[])
             break;
         case 'c':
             cpu = true;
+#ifdef VERBOSE
             printf("Attempting to use CPU instead of GPU.\n");
+#endif
             break;
         default:;
         }
@@ -171,7 +177,9 @@ void _clInit()
         throw(string("InitCL()::Error: Getting number of platforms (clGetPlatformIDs)"));
     }
 
+#ifdef VERBOSE
     printf("Number of platforms: %d\n", numPlatforms);
+#endif
 
     if (!(numPlatforms > 0))
     {
@@ -197,10 +205,14 @@ void _clInit()
         if (resultCL != CL_SUCCESS)
             throw(string("InitCL()::Error: Getting platform info (clGetPlatformInfo)"));
 
+#ifdef VERBOSE
         printf("Vendor of platform %d is %s\n", i, pbuff);
+#endif
     }
 
+#ifdef VERBOSE
     printf("Using platform %d.\n", cpu ? 1 : 0);
+#endif
 
     free(allPlatforms);
 
@@ -258,8 +270,9 @@ void _clInit()
     if (resultCL != CL_SUCCESS)
         throw(string("InitCL()::Error: Getting device info (clGetDeviceInfo-2)"));
 
+#ifdef VERBOSE
     printf("Vendor of selected device %d is %s\n", DEVICE_ID_inuse, pbuff);
-
+#endif
 
     //-----------------------------------------------
     //--cambine-4: Create an OpenCL command queue
@@ -268,7 +281,6 @@ void _clInit()
                                             oclHandles.devices[DEVICE_ID_inuse],
                                             CL_QUEUE_PROFILING_ENABLE,
                                             &resultCL);
-
     #else
     oclHandles.queue = clCreateCommandQueue(oclHandles.context,
                                             oclHandles.devices[DEVICE_ID_inuse],

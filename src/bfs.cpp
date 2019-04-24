@@ -10,12 +10,11 @@
 #include "matrixmarket/mmio.h"
 #include <sys/time.h>
 
-
 #define MAX_THREADS_PER_BLOCK 256
 
 #define ALPHA 15
 #define BETA 18
-#define SOURCE 9
+#define SOURCE 0
 
 typedef unsigned long long timestamp_t;
 
@@ -79,8 +78,9 @@ void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *
         }
     } while (shouldContinue);
 
+#ifdef VERBOSE
     printf("Took %d loops\n", amtloops);
-
+#endif
 #ifdef PROFILING
     timestamp_t t1 = get_timestamp();
     double secs = (t1 - t0) / 1000000.0L;
@@ -101,7 +101,6 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
     cl_ulong h2d_timer = 0;
     cl_ulong d2h_timer = 0;
 #endif
-
 
     try
     {
@@ -134,14 +133,13 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
 #ifdef PROFILING
         clWaitForEvents(6, h2dpreevents);
         _clFinish();
-
+       
         for(int i = 0; i < 6; i++) {
             cl_ulong time_start;
             cl_ulong time_end;
 
             clGetEventProfilingInfo(h2dpreevents[i], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
             clGetEventProfilingInfo(h2dpreevents[i], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
-
             h2d_timer += time_end - time_start;
         }
 #endif
@@ -224,7 +222,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
             //Force waiting for kernel to finish.
             clWaitForEvents(2, kernelevents);
             _clFinish();
-
+            
             cl_ulong time_start;
             cl_ulong time_end;
 
@@ -260,11 +258,27 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
         } while (h_over);
 
 
+#ifdef VERBOSE
         printf("Took %d loops\n", amtloops);
+#endif
         _clFinish();
 
         //--3 transfer data from device to host
-        _clMemcpyD2H(d_cost, no_of_nodes * sizeof(int), h_cost);
+        cl_event d2hevent;
+        d2hevent = _clMemcpyD2H(d_cost, no_of_nodes * sizeof(int), h_cost);
+
+#ifdef PROFILING
+        clWaitForEvents(1, &d2hevent);
+        _clFinish();
+
+        cl_ulong time_start;
+        cl_ulong time_end;
+
+        clGetEventProfilingInfo(d2hevent, CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
+        clGetEventProfilingInfo(d2hevent, CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
+
+        d2h_timer += time_end - time_start;
+#endif
     }
     catch (std::string msg)
     {
@@ -282,12 +296,15 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
     _clRelease();
 
 #ifdef PROFILING
-    //printf("Kernel1 time is: %0.3f milliseconds \n", kernel1_timer / 1000000.0);
-    //printf("Kernel2 time is: %0.3f milliseconds \n", kernel2_timer / 1000000.0);
+    
+    #ifdef VERBOSE
     printf("\tTotal h2d time is: %0.3f milliseconds \n", (h2d_timer) / 1000000.0);
     printf("\tTotal kernel time is: %0.3f milliseconds \n", (kernel1_timer + kernel2_timer) / 1000000.0);
     printf("\tTotal d2h time is: %0.3f milliseconds \n", (d2h_timer) / 1000000.0);
     printf("\tTotal time: %0.3f milliseconds \n", (h2d_timer + kernel1_timer + kernel2_timer + d2h_timer) / 1000000.0);
+    #else
+    printf("%0.3f %0.3f %0.3f %0.3f\n", (h2d_timer) / 1000000.0, (kernel1_timer + kernel2_timer) / 1000000.0, (d2h_timer) / 1000000.0, (h2d_timer + kernel1_timer + kernel2_timer + d2h_timer) / 1000000.0);
+    #endif
 #endif
 
 }
@@ -327,7 +344,9 @@ int main(int argc, char *argv[])
 
         //Read in Graph from a file
         char *input_f = argv[1];
+#ifdef VERBOSE
         printf("Reading File\n");
+#endif
         FILE *fp = fopen(input_f, "r");
         if (!fp)
         {
@@ -368,7 +387,9 @@ int main(int argc, char *argv[])
         /*   specifier as in "%lg", "%lf", "%le", otherwise errors will occur */
         /*  (ANSI C X3.159-1989, Sec. 4.9.6.2, p. 136 lines 13-15)            */
 
+#ifdef VERBOSE
         printf("Amt nodes: %d, non-zeroes: %d\n", no_of_nodes, nz);
+#endif
         std::unordered_set<int>* construction_set = new std::unordered_set<int>[no_of_nodes];
 
         // Reserve a rough estimate.
@@ -405,8 +426,10 @@ int main(int argc, char *argv[])
             }
         }
         
+#ifdef VERBOSE
         printf("Done reading nodes. Converting edges...\n");
-        
+#endif
+
         if (fp !=stdin) fclose(fp);
 
         int edge_list_size = nz * 2;
@@ -446,7 +469,9 @@ int main(int argc, char *argv[])
         h_cost[SOURCE] = 0;
         h_cost_ref[SOURCE] = 0;
 
+#ifdef VERBOSE
         printf("Running opencl...\n");
+#endif
 
         //---------------------------------------------------------
         //--opencl entry
@@ -464,16 +489,19 @@ int main(int argc, char *argv[])
             h_graph_visited[i] = false;
         }
 
-        printf("Running cpu...\n");
-
-        // Set the SOURCE node as true in the mask
+#ifndef NO_CHECK
+        #ifdef VERBOSE
+            printf("Running cpu...\n");
+        #endif
+        
+        // Set the source node as true in the mask
         h_graph_mask[SOURCE] = true;
         h_graph_visited[SOURCE] = true;
         run_bfs_cpu(no_of_nodes, h_graph_nodes, edge_list_size, h_graph_edges, h_graph_mask, h_updating_graph_mask, h_graph_visited, h_cost_ref);
-
         //---------------------------------------------------------
         //--result verification
         compare_results<int>(h_cost_ref, h_cost, no_of_nodes);
+#endif
     }
     catch (std::string msg)
     {

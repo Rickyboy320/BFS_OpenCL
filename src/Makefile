@@ -24,6 +24,9 @@ res:$(SRC)
 debug: $(SRC)
 	$(CC) $(CC_FLAGS) $(SRC) -o $(EXE) -lOpenCL -D ERRMSG -D PTX_MSG -D RES_MSG -D PROFILING
 
+results: $(SRC)
+	$(CC) $(CC_FLAGS) $(SRC) -o $(EXE) -lOpenCL -D NO_CHECK -D PROFILING
+
 run-gpu: debug
 	./$(EXE) ../data/road_usa.mtx
 
