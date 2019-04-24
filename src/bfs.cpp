@@ -12,7 +12,7 @@
 
 #define MAX_THREADS_PER_BLOCK 256
 
-#define SOURCE 9
+#define SOURCE 0
 
 typedef unsigned long long timestamp_t;
 
