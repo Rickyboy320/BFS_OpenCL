@@ -318,9 +318,8 @@ int main(int argc, char *argv[])
 
         //Read in Graph from a file
         char *input_f = argv[1];
-#ifdef VERBOSE
-        printf("Reading File\n");
-#endif
+        printf("%s\n", input_f);
+
         FILE *fp = fopen(input_f, "r");
         if (!fp)
         {
