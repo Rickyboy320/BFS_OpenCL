@@ -350,9 +350,8 @@ int main(int argc, char *argv[])
 
         //Read in Graph from a file
         char *input_f = argv[1];
-#ifdef VERBOSE
-        printf("Reading File\n");
-#endif
+        printf("%s\n", input_f);
+
         FILE *fp = fopen(input_f, "r");
         if (!fp)
         {
@@ -464,7 +463,6 @@ int main(int argc, char *argv[])
             h_graph_visited[i] = false;   
         }
 
-
         _clInit();
 
         // Allocate mem for the result on host side and run bfs
@@ -512,6 +510,7 @@ int main(int argc, char *argv[])
         #endif
         
         // Set the source node as true in the mask
+        h_cost_ref[source] = 0;
         h_graph_mask[source] = true;
         h_graph_visited[source] = true;
         run_bfs_cpu(no_of_nodes, h_graph_nodes, edge_list_size, h_graph_edges, h_graph_mask, h_updating_graph_mask, h_graph_visited, h_cost_ref);
