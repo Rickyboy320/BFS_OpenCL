@@ -22,7 +22,7 @@ res:$(SRC)
 	$(CC) $(CC_FLAGS) $(SRC) -o $(EXE) -lOpenCL -D RES_MSG
 
 debug: $(SRC)
-	$(CC) $(CC_FLAGS) $(SRC) -o $(EXE) -lOpenCL -D ERRMSG -D PTX_MSG -D RES_MSG -D PROFILING
+	$(CC) $(CC_FLAGS) $(SRC) -o $(EXE) -lOpenCL -D ERRMSG -D PTX_MSG -D RES_MSG -D PROFILING -D VERBOSE
 
 results: $(SRC)
 	$(CC) $(CC_FLAGS) $(SRC) -o $(EXE) -lOpenCL -D NO_CHECK -D PROFILING
