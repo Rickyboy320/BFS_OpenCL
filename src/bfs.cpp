@@ -14,7 +14,8 @@
 
 #define ALPHA 15
 #define BETA 18
-#define SOURCE 0
+int iterations = 1;
+int source = 0;
 
 typedef unsigned long long timestamp_t;
 
@@ -104,14 +105,12 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
 
     try
     {
-        int frontier_edges = h_graph_nodes[SOURCE].no_of_edges;
+        int frontier_edges = h_graph_nodes[source].no_of_edges;
         int frontier_vertices = 1;
         int old_frontier_vertices = 1;
         int unexplored_edges = edge_list_size;
 
         //--1 transfer data from host to device
-        _clInit();
-
         d_graph_nodes = _clMalloc(no_of_nodes * sizeof(Node), h_graph_nodes);
         d_graph_edges = _clMalloc(edge_list_size * sizeof(int), h_graph_edges);
         d_graph_mask = _clMallocRW(no_of_nodes * sizeof(char), h_graph_mask);
@@ -131,7 +130,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
         h2dpreevents[5] = _clMemcpyH2D(d_cost, no_of_nodes * sizeof(int), h_cost);
 
 #ifdef PROFILING
-        clWaitForEvents(6, h2dpreevents);
+        _clWait(6, h2dpreevents);
         _clFinish();
        
         for(int i = 0; i < 6; i++) {
@@ -162,7 +161,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
             h2devents[2] = _clMemcpyH2D(d_frontier_vertices, sizeof(int), &zero);
 
 #ifdef PROFILING
-            clWaitForEvents(3, h2devents);
+            _clWait(3, h2devents);
             _clFinish();
 
             for(int i = 0; i < 3; i++) {
@@ -175,6 +174,8 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
                 h2d_timer += time_end - time_start;
             }
 #endif
+            clReleaseEvent(h2devents[0]);
+
 
             bool shrinking = frontier_vertices < old_frontier_vertices;
 
@@ -220,7 +221,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
             kernelevents[1] = _clInvokeKernel(kernel_id, no_of_nodes, work_group_size);
 #ifdef PROFILING
             //Force waiting for kernel to finish.
-            clWaitForEvents(2, kernelevents);
+            _clWait(2, kernelevents);
             _clFinish();
             
             cl_ulong time_start;
@@ -238,11 +239,14 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
             
 #endif
             old_frontier_vertices = frontier_vertices;
+            clReleaseEvent(kernelevents[0]);
+            clReleaseEvent(kernelevents[1]);
+
             d2hevents[0] = _clMemcpyD2H(d_over, sizeof(char), &h_over);
             d2hevents[1] = _clMemcpyD2H(d_frontier_vertices, sizeof(int), &frontier_vertices);
             d2hevents[2] = _clMemcpyD2H(d_frontier_edges, sizeof(int), &frontier_edges);
 #ifdef PROFILING
-            clWaitForEvents(3, d2hevents);
+            _clWait(3, d2hevents);
             _clFinish();
 
             for(int i = 0; i < 3; i++) {
@@ -254,6 +258,8 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
 
                 d2h_timer += time_end - time_start;
             }
+
+            clReleaseEvent(d2hevents[0]);
 #endif
         } while (h_over);
 
@@ -264,21 +270,22 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
         _clFinish();
 
         //--3 transfer data from device to host
-        cl_event d2hevent;
-        d2hevent = _clMemcpyD2H(d_cost, no_of_nodes * sizeof(int), h_cost);
+        cl_event d2hevent[1];
+        d2hevent[0] = _clMemcpyD2H(d_cost, no_of_nodes * sizeof(int), h_cost);
 
 #ifdef PROFILING
-        clWaitForEvents(1, &d2hevent);
+        _clWait(1, d2hevent);
         _clFinish();
 
         cl_ulong time_start;
         cl_ulong time_end;
 
-        clGetEventProfilingInfo(d2hevent, CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
-        clGetEventProfilingInfo(d2hevent, CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
+        clGetEventProfilingInfo(d2hevent[0], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
+        clGetEventProfilingInfo(d2hevent[0], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
 
         d2h_timer += time_end - time_start;
 #endif
+        clReleaseEvent(d2hevent[0]);
     }
     catch (std::string msg)
     {
@@ -293,7 +300,6 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
     _clFree(d_graph_visited);
     _clFree(d_cost);
     _clFree(d_over);
-    _clRelease();
 
 #ifdef PROFILING
     
@@ -340,7 +346,7 @@ int main(int argc, char *argv[])
             exit(0);
         }
 
-        _clCmdParams(argc, argv);
+        _clCmdParams(argc, argv, &source, &iterations);
 
         //Read in Graph from a file
         char *input_f = argv[1];
@@ -458,49 +464,64 @@ int main(int argc, char *argv[])
             h_graph_visited[i] = false;   
         }
 
-        // Allocate mem for the result on host side
-        int *h_cost = (int *)malloc(sizeof(int) * no_of_nodes);
-        int *h_cost_ref = (int *)malloc(sizeof(int) * no_of_nodes);
-        for (int i = 0; i < no_of_nodes; i++)
-        {
-            h_cost[i] = -1;
-            h_cost_ref[i] = -1;
+
+        _clInit();
+
+        // Allocate mem for the result on host side and run bfs
+        int **h_cost;
+        h_cost = (int**) malloc(iterations * sizeof(int*));    
+        for(int i = 0; i < iterations; i++)
+        {    
+            h_cost[i] = (int*) malloc(no_of_nodes * sizeof(int));
+            for (int j = 0; j < no_of_nodes; j++)
+            {
+                h_cost[i][j] = -1;
+            }
+
+    #ifdef VERBOSE
+            printf("Running opencl...\n");
+    #endif
+
+            //---------------------------------------------------------
+            //--opencl entry
+            h_cost[i][source] = 0;
+            h_graph_mask[source] = true;
+            h_graph_visited[source] = true;
+            run_bfs_opencl(no_of_nodes, h_graph_nodes, edge_list_size, h_graph_edges, h_graph_mask, h_updating_graph_mask, h_graph_visited, h_cost[i]);
         }
-        h_cost[SOURCE] = 0;
-        h_cost_ref[SOURCE] = 0;
 
-#ifdef VERBOSE
-        printf("Running opencl...\n");
-#endif
+        _clRelease();
 
-        //---------------------------------------------------------
-        //--opencl entry
-        h_graph_mask[SOURCE] = true;
-        h_graph_visited[SOURCE] = true;
-        run_bfs_opencl(no_of_nodes, h_graph_nodes, edge_list_size, h_graph_edges, h_graph_mask, h_updating_graph_mask, h_graph_visited, h_cost);
-
+#ifndef NO_CHECK
         //---------------------------------------------------------
         //--cpu entry
         // Initialize the memory again
+
+        int *h_cost_ref = (int *)malloc(sizeof(int) * no_of_nodes);
+
         for (int i = 0; i < no_of_nodes; i++)
         {
+            h_cost_ref[i] = -1;
             h_graph_mask[i] = false;
             h_updating_graph_mask[i] = false;
             h_graph_visited[i] = false;
         }
 
-#ifndef NO_CHECK
         #ifdef VERBOSE
             printf("Running cpu...\n");
         #endif
         
         // Set the source node as true in the mask
-        h_graph_mask[SOURCE] = true;
-        h_graph_visited[SOURCE] = true;
+        h_graph_mask[source] = true;
+        h_graph_visited[source] = true;
         run_bfs_cpu(no_of_nodes, h_graph_nodes, edge_list_size, h_graph_edges, h_graph_mask, h_updating_graph_mask, h_graph_visited, h_cost_ref);
         //---------------------------------------------------------
         //--result verification
-        compare_results<int>(h_cost_ref, h_cost, no_of_nodes);
+        for(int i = 0; i < iterations; i++) {
+            compare_results<int>(h_cost_ref, h_cost[i], no_of_nodes);
+            free(h_cost[i]);
+        }
+        free(h_cost);
 #endif
     }
     catch (std::string msg)

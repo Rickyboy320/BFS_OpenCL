@@ -99,7 +99,7 @@ string FileToString(const string fileName)
 //---------------------------------------
 //Read command line parameters
 //
-void _clCmdParams(int argc, char *argv[])
+void _clCmdParams(int argc, char *argv[], int* source, int* iterations)
 {
     for (int i = 2; i < argc; i++)
     {
@@ -142,6 +142,34 @@ void _clCmdParams(int argc, char *argv[])
 #ifdef VERBOSE
             printf("Attempting to use CPU instead of GPU.\n");
 #endif
+            break;
+        case 's':
+             if (++i < argc)
+            {
+                sscanf(argv[i], "%d", source);
+#ifdef VERBOSE
+                printf("Setting source size to %d\n", *source);
+#endif
+            }
+            else
+            {
+                std::cerr << "Could not read argument after option " << argv[i - 1] << std::endl;
+                throw;
+            }
+            break;
+        case 'i':
+             if (++i < argc)
+            {
+                sscanf(argv[i], "%d", iterations);
+#ifdef VERBOSE
+                printf("Setting iterations to %d\n", *iterations);
+#endif
+            }
+            else
+            {
+                std::cerr << "Could not read argument after option " << argv[i - 1] << std::endl;
+                throw;
+            }
             break;
         default:;
         }
@@ -264,14 +292,14 @@ void _clInit()
         throw(string("Device %d is not available.\n", DEVICE_ID_inuse));
     }
 
-    char pbuff[128];
-    resultCL = clGetDeviceInfo(oclHandles.devices[DEVICE_ID_inuse], CL_DEVICE_VENDOR, sizeof(pbuff), pbuff, NULL);
+    char vendor[128];
+    resultCL = clGetDeviceInfo(oclHandles.devices[DEVICE_ID_inuse], CL_DEVICE_VENDOR, sizeof(vendor), vendor, NULL);
 
     if (resultCL != CL_SUCCESS)
         throw(string("InitCL()::Error: Getting device info (clGetDeviceInfo-2)"));
 
 #ifdef VERBOSE
-    printf("Vendor of selected device %d is %s\n", DEVICE_ID_inuse, pbuff);
+    printf("Vendor of selected device %d is %s\n", DEVICE_ID_inuse, vendor);
 #endif
 
     //-----------------------------------------------
@@ -409,6 +437,29 @@ void _clInit()
     std::cout << "--cambine:" << build_log << std::endl;
     free(build_log);
 #endif
+
+    char name[128];
+    cl_device_type device_type;
+    cl_uint clockfreq;
+    cl_uint computeunits;
+    size_t groupsize;
+    
+    cl_int result1 = clGetDeviceInfo(oclHandles.devices[DEVICE_ID_inuse], CL_DEVICE_NAME, sizeof(name), name, NULL);
+    cl_int result2 = clGetDeviceInfo(oclHandles.devices[DEVICE_ID_inuse], CL_DEVICE_TYPE, sizeof(device_type), &device_type, NULL);
+    cl_int result3 = clGetDeviceInfo(oclHandles.devices[DEVICE_ID_inuse], CL_DEVICE_MAX_CLOCK_FREQUENCY, sizeof(clockfreq), &clockfreq, NULL);
+    cl_int result4 = clGetDeviceInfo(oclHandles.devices[DEVICE_ID_inuse], CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(computeunits), &computeunits, NULL);
+    cl_int result5 = clGetDeviceInfo(oclHandles.devices[DEVICE_ID_inuse], CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(groupsize), &groupsize, NULL);
+
+    if(result1 != CL_SUCCESS || result2 != CL_SUCCESS || result3 != CL_SUCCESS || result4 != CL_SUCCESS || result5 != CL_SUCCESS)
+    {
+        printf("Succ: %d, invalidval: %d, 1: %d, 2: %d, 3: %d, 4: %d, 5: %d\n", CL_SUCCESS, CL_INVALID_VALUE, result1, result2, result3, result4, result5);
+        string errorMsg = "InitCL()::Error: Could not retrieve full device information";
+        throw(errorMsg);
+    }
+
+    const char* type = device_type == CL_DEVICE_TYPE_CPU ? "CPU" : device_type == CL_DEVICE_TYPE_GPU ? "GPU" : "Other";
+
+    printf("Name: %s, vendor: %s, type: %s. Max clock frequency: %u MHz. Parallel cores: %u. Max work group size: %lu\n", name, vendor, type, clockfreq, computeunits, groupsize);
 }
 
 //---------------------------------------
@@ -471,45 +522,57 @@ void _clRelease()
         throw(string("ReleaseCL()::Error encountered."));
     }
 }
+
+cl_mem _clCreateBuffer(cl_mem_flags flags, size_t size, void *host_ptr)
+{
+    cl_mem d_mem;
+    d_mem = clCreateBuffer(oclHandles.context, flags, size, host_ptr, &oclHandles.cl_status);
+
+#ifdef ERRMSG
+    oclHandles.error_str = "exception in _clCreateBuffer -> ";
+    switch(oclHandles.cl_status) {
+        case CL_INVALID_CONTEXT:
+            oclHandles.error_str += "CL_INVALID_CONTEXT";
+            break;
+        case CL_INVALID_VALUE:
+            oclHandles.error_str += "CL_INVALID_VALUE";
+            break;
+        case CL_INVALID_HOST_PTR:
+            oclHandles.error_str += "CL_INVALID_HOST_PTR";
+            break;
+        case CL_MEM_OBJECT_ALLOCATION_FAILURE:
+            oclHandles.error_str += "CL_MEM_OBJECT_ALLOCATION_FAILURE";
+            break;
+        case CL_OUT_OF_HOST_MEMORY:
+            oclHandles.error_str += "CL_OUT_OF_HOST_MEMORY";
+            break;
+    }
+
+    if (oclHandles.cl_status != CL_SUCCESS)
+        throw(oclHandles.error_str);
+#endif
+    return d_mem;
+}
+
 //--------------------------------------------------------
 //--cambine:create buffer and then copy data from host to device
 cl_mem _clCreateAndCpyMem(int size, void *h_mem_source)
 {
-    cl_mem d_mem;
-    d_mem = clCreateBuffer(oclHandles.context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, size, h_mem_source, &oclHandles.cl_status);
-#ifdef ERRMSG
-    if (oclHandles.cl_status != CL_SUCCESS) {
-        throw(string("exception in _clCreateAndCpyMem()"));
-    }
-#endif
-    return d_mem;
+    return _clCreateBuffer(CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, size, h_mem_source);
 }
 //-------------------------------------------------------
 //--cambine:	create read only  buffer for devices
 //--date:	17/01/2011
 cl_mem _clMallocRW(int size, void *h_mem_ptr)
 {
-    cl_mem d_mem;
-    d_mem = clCreateBuffer(oclHandles.context, CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, size, h_mem_ptr, &oclHandles.cl_status);
-#ifdef ERRMSG
-    if (oclHandles.cl_status != CL_SUCCESS) {
-        throw(string("exception in _clMallocRW"));
-    }
-#endif
-    return d_mem;
+    return _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, size, h_mem_ptr);
 }
 //-------------------------------------------------------
 //--cambine:	create read and write buffer for devices
 //--date:	17/01/2011
 cl_mem _clMalloc(int size, void *h_mem_ptr)
 {
-    cl_mem d_mem;
-    d_mem = clCreateBuffer(oclHandles.context, CL_MEM_WRITE_ONLY | CL_MEM_COPY_HOST_PTR, size, h_mem_ptr, &oclHandles.cl_status);
-#ifdef ERRMSG
-    if (oclHandles.cl_status != CL_SUCCESS)
-        throw(string("exception in _clMalloc"));
-#endif
-    return d_mem;
+    return _clCreateBuffer(CL_MEM_WRITE_ONLY | CL_MEM_COPY_HOST_PTR, size, h_mem_ptr);
 }
 
 //-------------------------------------------------------
@@ -921,4 +984,38 @@ void _clFree(cl_mem ob)
         throw(oclHandles.error_str);
 #endif
 }
+
+void _clWait(cl_int num_of_events, const cl_event* events)
+{
+    oclHandles.cl_status = clWaitForEvents(num_of_events, events);
+#ifdef ERRMSG
+    oclHandles.error_str = "exception in _clWait() ->";
+    switch(oclHandles.cl_status)
+    {
+        case CL_INVALID_VALUE:
+            oclHandles.error_str += "CL_INVALID_VALUE";
+            break;
+        case CL_INVALID_CONTEXT:
+            oclHandles.error_str += "CL_INVALID_CONTEXT";
+            break;
+        case CL_INVALID_EVENT:
+            oclHandles.error_str += "CL_INVALID_EVENT";
+            break;
+        case CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST:
+            oclHandles.error_str += "CL_EXEC_STATUS_ERROR_FOR_EVENTS_IN_WAIT_LIST";
+            break;
+        case CL_OUT_OF_RESOURCES:
+            oclHandles.error_str += "CL_OUT_OF_RESOURCES";
+            break;
+        case CL_OUT_OF_HOST_MEMORY:
+            oclHandles.error_str += "CL_OUT_OF_HOST_MEMORY";
+            break;
+    }
+    if(oclHandles.cl_status != CL_SUCCESS)
+    {
+        throw(oclHandles.error_str);
+    }
+#endif
+}
+
 #endif //_CL_HELPER_
