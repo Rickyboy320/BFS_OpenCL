@@ -396,7 +396,6 @@ int main(int argc, char *argv[])
             }
         }
         
-        
         if (fp !=stdin) fclose(fp);
 
         int edge_list_size = nz * 2;
@@ -424,7 +423,6 @@ int main(int argc, char *argv[])
             h_updating_graph_mask[i] = false;
             h_graph_visited[i] = false;   
         }
-
 
         _clInit();
 
