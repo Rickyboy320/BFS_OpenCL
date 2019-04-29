@@ -342,7 +342,9 @@ int main(int argc, char *argv[])
             fprintf(stderr, "Flags:\n");
             fprintf(stderr, "\t-g <int>: work group size.\n");
             fprintf(stderr, "\t-d <int>: device id to use.\n");
-
+            fprintf(stderr, "\t-c: use cpu instead of gpu.\n");
+            fprintf(stderr, "\t-s <int>: use value as source node (def 0).\n");
+            fprintf(stderr, "\t-i <int>: use amount of iterations (def 1).\n");
             exit(0);
         }
 
@@ -384,8 +386,6 @@ int main(int argc, char *argv[])
         }
 
         /* reserve memory for matrices */
-        I = (int *) malloc(nz * sizeof(int));
-        J = (int *) malloc(nz * sizeof(int));
         val = (double *) malloc(nz * sizeof(double));
 
         /* NOTE: when reading in doubles, ANSI C requires the use of the "l"  */
@@ -406,28 +406,30 @@ int main(int argc, char *argv[])
         {
             for (int i = 0; i < nz; i++)
             {
-                if(fscanf(fp, "%d %d\n", &I[i], &J[i]) != 2) {
+                int x, y;
+                if(fscanf(fp, "%d %d\n", &x, &y) != 2) {
                     printf("Failed to read line %d\n", i);
                 }
-                I[i]--;  /* adjust from 1-based to 0-based */
-                J[i]--;
+                x--;  /* adjust from 1-based to 0-based */
+                y--;
 
-                construction_set[I[i]].insert(J[i]);
-                construction_set[J[i]].insert(I[i]);
+                construction_set[x].insert(y);
+                construction_set[y].insert(x);
             }
         }
         else
         {
             for (int i = 0; i < nz; i++)
             {
-                if(fscanf(fp, "%d %d %lg\n", &I[i], &J[i], &val[i]) != 3) {
+                int x, y;
+                if(fscanf(fp, "%d %d %lg\n", &x, &y, &val[i]) != 3) {
                     printf("Failed to read line %d\n", i);
                 }
-                I[i]--;  /* adjust from 1-based to 0-based */
-                J[i]--;
+                x--;  /* adjust from 1-based to 0-based */
+                y--;
 
-                construction_set[I[i]].insert(J[i]);
-                construction_set[J[i]].insert(I[i]);
+                construction_set[x].insert(y);
+                construction_set[y].insert(x);
             }
         }
         
