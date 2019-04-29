@@ -148,7 +148,7 @@ void _clCmdParams(int argc, char *argv[], int* source, int* iterations)
             {
                 sscanf(argv[i], "%d", source);
 #ifdef VERBOSE
-                printf("Setting source size to %d\n", *source);
+                printf("Setting source to %d\n", *source);
 #endif
             }
             else
