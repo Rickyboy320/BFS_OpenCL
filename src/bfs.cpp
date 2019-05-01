@@ -229,7 +229,6 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
 
             clReleaseEvent(d2hevents[0]);
 #endif
-           printf("New frontier size: %d\n", h_new_frontier_size);
         } while (h_new_frontier_size > 0);
 
         _clFinish();
