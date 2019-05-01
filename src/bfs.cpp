@@ -36,7 +36,7 @@ struct Node
 //--date:	26/01/2011
 //--note: width is changed to the new_width
 //----------------------------------------------------------
-void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *h_graph_edges, char* h_graph_mask, char* h_updating_graph_mask, char* h_graph_visited, int *h_cost_ref)
+void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *h_graph_edges, char* h_graph_mask, char* h_updating_graph_mask, int* h_graph_visited, int *h_cost_ref)
 {
 #ifdef PROFILING
     timestamp_t t0 = get_timestamp();
@@ -89,9 +89,10 @@ void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *
 //----------------------------------------------------------
 //--breadth first search on the OpenCL device
 //----------------------------------------------------------
-void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_frontier, int h_new_frontier_size, int edge_list_size, int *h_graph_edges, char *h_graph_visited, int *h_cost)
+void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_frontier, int h_new_frontier_size, int edge_list_size, int *h_graph_edges, int *h_graph_visited, int *h_cost)
 {
-    int h_graph_frontier_size = 0;
+    int amtloops = 0;
+    int h_graph_frontier_size = 1;
     int* h_graph_frontier = (int*) malloc(sizeof(int) * no_of_nodes);
 
     cl_mem d_graph_nodes, d_graph_frontier, d_graph_frontier_size, d_graph_edges, d_new_frontier, d_new_frontier_size, d_graph_visited, d_cost;
@@ -113,7 +114,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
         d_graph_edges = _clMalloc(edge_list_size * sizeof(int), h_graph_edges);
         d_new_frontier = _clMallocRW(no_of_nodes * sizeof(int), h_new_graph_frontier);
         d_new_frontier_size = _clMallocRW(sizeof(int), &h_new_frontier_size);
-        d_graph_visited = _clMallocRW(no_of_nodes * sizeof(char), h_graph_visited);
+        d_graph_visited = _clMallocRW(no_of_nodes * sizeof(int), h_graph_visited);
         
         d_cost = _clMallocRW(no_of_nodes * sizeof(int), h_cost);
 
@@ -124,12 +125,11 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
         h2dpreevents[3] = _clMemcpyH2D(d_graph_edges, edge_list_size * sizeof(int), h_graph_edges);
         h2dpreevents[4] = _clMemcpyH2D(d_new_frontier, no_of_nodes * sizeof(int), h_new_graph_frontier);
         h2dpreevents[5] = _clMemcpyH2D(d_new_frontier_size, sizeof(int), &h_new_frontier_size);
-        h2dpreevents[6] = _clMemcpyH2D(d_graph_visited, no_of_nodes * sizeof(char), h_graph_visited);
+        h2dpreevents[6] = _clMemcpyH2D(d_graph_visited, no_of_nodes * sizeof(int), h_graph_visited);
         h2dpreevents[7] = _clMemcpyH2D(d_cost, no_of_nodes * sizeof(int), h_cost);
         
 #ifdef PROFILING
         _clWait(8, h2dpreevents);
-        printf("Preevent done\n");
         _clFinish();
        
         for(int i = 0; i < 8; i++) {
@@ -142,8 +142,6 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
         }
 #endif
         //--2 invoke kernel
-        int amtloops = 0;
-
         cl_event h2devents[1];
         cl_event kernelevents[2];
         cl_event d2hevents[1];
@@ -152,21 +150,19 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
             amtloops++;
             
             // 'Swap' buffers
-            //cl_mem tmp = d_new_frontier;
-            //d_new_frontier = d_graph_frontier;
-            //d_graph_frontier = tmp;
+            cl_mem tmp = d_new_frontier;
+            d_new_frontier = d_graph_frontier;
+            d_graph_frontier = tmp;
 
-            //tmp = d_new_frontier_size;
-            //d_new_frontier_size = d_graph_frontier_size;
-            //d_graph_frontier_size = tmp;
+            tmp = d_new_frontier_size;
+            d_new_frontier_size = d_graph_frontier_size;
+            d_graph_frontier_size = tmp;
 
             int zero = 0;
             h2devents[0] = _clMemcpyH2D(d_new_frontier_size, sizeof(int), &zero);
 
 #ifdef PROFILING
-            printf("Preh2d\n");
             _clWait(1, h2devents);
-            printf("h2d\n");
 
             _clFinish();
 
@@ -201,10 +197,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
 
 #ifdef PROFILING
             //Force waiting for kernel to finish.
-            printf("Prekernel\n");
             _clWait(1, kernelevents);
-            printf("Kernel done\n");
-
             _clFinish();
             
             cl_ulong time_start;
@@ -218,11 +211,10 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
 #endif
             clReleaseEvent(kernelevents[0]);
 
-            d2hevents[0] = _clMemcpyD2H(d_graph_frontier_size, sizeof(int), &h_graph_frontier_size);
+            d2hevents[0] = _clMemcpyD2H(d_new_frontier_size, sizeof(int), &h_new_frontier_size);
 
 #ifdef PROFILING
             _clWait(1, d2hevents);
-            printf("D2h done");
             _clFinish();
 
             for(int i = 0; i < 1; i++) {
@@ -237,12 +229,9 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
 
             clReleaseEvent(d2hevents[0]);
 #endif
-        } while (h_graph_frontier_size > 0);
+           printf("New frontier size: %d\n", h_new_frontier_size);
+        } while (h_new_frontier_size > 0);
 
-
-#ifdef VERBOSE
-        printf("Took %d loops\n", amtloops);
-#endif
         _clFinish();
 
         //--3 transfer data from device to host
@@ -251,8 +240,6 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
 
 #ifdef PROFILING
         _clWait(1, d2hevent);
-        printf("End done");
-
         _clFinish();
 
         cl_ulong time_start;
@@ -283,6 +270,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
 #ifdef PROFILING
     
     #ifdef VERBOSE
+    printf("Took %d loops\n", amtloops);
     printf("\tTotal h2d time is: %0.3f milliseconds \n", (h2d_timer) / 1000000.0);
     printf("\tTotal kernel time is: %0.3f milliseconds \n", (kernel1_timer + kernel2_timer) / 1000000.0);
     printf("\tTotal d2h time is: %0.3f milliseconds \n", (d2h_timer) / 1000000.0);
@@ -308,7 +296,7 @@ int main(int argc, char *argv[])
     int *h_graph_frontier;
     char *h_graph_mask;
     char *h_updating_graph_mask;
-    char *h_graph_visited;
+    int *h_graph_visited;
     int *h_graph_edges;
     int *I;
     int *J;
@@ -421,7 +409,7 @@ int main(int argc, char *argv[])
         h_graph_mask = (char *)malloc(sizeof(char) * no_of_nodes);
         h_graph_frontier = (int *)malloc(sizeof(int) * no_of_nodes);
         h_updating_graph_mask = (char *)malloc(sizeof(char) * no_of_nodes);
-        h_graph_visited = (char *)malloc(sizeof(char) * no_of_nodes);
+        h_graph_visited = (int *)malloc(sizeof(int) * no_of_nodes);
 
         int index = 0;
         for (int i = 0; i < no_of_nodes; i++)
@@ -434,7 +422,7 @@ int main(int argc, char *argv[])
 
             h_graph_mask[i] = false;
             h_updating_graph_mask[i] = false;
-            h_graph_visited[i] = false;   
+            h_graph_visited[i] = 0;   
         }
 
         _clInit();
@@ -458,7 +446,7 @@ int main(int argc, char *argv[])
             //--opencl entry
             h_cost[i][source] = 0;
             h_graph_frontier[0] = source;
-            h_graph_visited[source] = true;
+            h_graph_visited[source] = 1;
             run_bfs_opencl(no_of_nodes, h_graph_nodes, h_graph_frontier, 1, edge_list_size, h_graph_edges, h_graph_visited, h_cost[i]);
         }
 
@@ -470,13 +458,14 @@ int main(int argc, char *argv[])
         // Initialize the memory again
 
         int *h_cost_ref = (int *)malloc(sizeof(int) * no_of_nodes);
+        int *h_ref_graph_visited = (int *)malloc(sizeof(int) * no_of_nodes);
 
         for (int i = 0; i < no_of_nodes; i++)
         {
             h_cost_ref[i] = -1;
             h_graph_mask[i] = false;
             h_updating_graph_mask[i] = false;
-            h_graph_visited[i] = false;
+            h_ref_graph_visited[i] = false;
         }
 
 #ifdef VERBOSE
@@ -494,6 +483,7 @@ int main(int argc, char *argv[])
             free(h_cost[i]);
         }
         free(h_cost);
+        free(h_ref_graph_visited);
 #endif
     }
     catch (std::string msg)

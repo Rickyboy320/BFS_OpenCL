@@ -15,27 +15,27 @@ __kernel void BFS_1( const __global Node* g_graph_nodes,
                     const __global int* g_graph_frontier_size,
                     const __global int* g_graph_edges,
                     __global int* g_new_frontier,
-                    __global int* g_new_frontier_size, 
-                    __global char* g_graph_visited, 
+                    volatile __global int* g_new_frontier_size, 
+                    volatile __global int* g_graph_visited, 
                     __global int* g_cost, 
                     const int no_of_nodes){
     int tid = get_global_id(0);
-    if(tid < g_graph_frontier_size) 
+    if(tid < *g_graph_frontier_size) 
     {
         int nodeId = g_graph_frontier[tid];
         Node node = g_graph_nodes[nodeId];
-        printf("%p\n", node);
-        //for(int i = node.starting; i < node.starting + node.no_of_edges; i++) 
-        //{
-        //    printf("%d\n", i);
-            // int id = g_graph_edges[i];
-            // if(!g_graph_visited[id])
-            // {
-            //     g_cost[id] = g_cost[tid] + 1;
-            //     g_new_frontier[*g_new_frontier_size] = id;
-            //     *g_new_frontier_size += 1;
-            // }
-        //}
+        for(int i = node.starting; i < node.starting + node.no_of_edges; i++) 
+        {
+            int id = g_graph_edges[i];
+            if(atomic_xchg(&g_graph_visited[id], 1) == 0)
+            {
+                g_cost[id] = g_cost[nodeId] + 1;
+
+                int old = atomic_inc(g_new_frontier_size);
+                g_new_frontier[old] = id;
+                g_graph_visited[id] = true;
+            }
+        }
     }	
 }
 
