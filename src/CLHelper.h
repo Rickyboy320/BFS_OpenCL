@@ -36,8 +36,8 @@ struct oclHandleStruct
 struct oclHandleStruct oclHandles;
 
 char kernel_file[100] = "Kernels.cl";
-int total_kernels = 2;
-string kernel_names[2] = {"BFS_1", "BFS_2"};
+int total_kernels = 1;
+string kernel_names[1] = {"BFS_1"};
 size_t work_group_size = 512;
 int device_id_inuse = 0;
 bool cpu = false;
