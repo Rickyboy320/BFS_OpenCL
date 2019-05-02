@@ -42,7 +42,7 @@ with open(file_from, 'r') as original:
         if int(splitted[0]) > maxval:
             maxval = int(splitted[0])
         if int(splitted[1]) > maxval:
-            maxval = int(splitted[0])
+            maxval = int(splitted[1])
 
 
 if not zero_based:
