@@ -29,9 +29,9 @@ __kernel void BFS_1( const __global Node* g_graph_nodes,
             int id = g_graph_edges[i];
             if(atomic_xchg(&g_graph_visited[id], 1) == 0)
             {
+                int old = atomic_inc(g_new_frontier_size);
                 g_cost[id] = g_cost[nodeId] + 1;
 
-                int old = atomic_inc(g_new_frontier_size);
                 g_new_frontier[old] = id;
                 g_graph_visited[id] = true;
             }
