@@ -1,4 +1,7 @@
 # Forward to src/ file
+results:
+	$(MAKE) -C src results
+
 release:
 	$(MAKE) -C src release
 errmsg:

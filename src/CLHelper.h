@@ -36,8 +36,8 @@ struct oclHandleStruct
 struct oclHandleStruct oclHandles;
 
 char kernel_file[100] = "Kernels.cl";
-int total_kernels = 1;
-string kernel_names[1] = {"BFS_1"};
+int total_kernels = 5;
+string kernel_names[5] = {"BFS_TD", "BFS_BU", "BFS_CONVERT_BU", "BFS_CONVERT_TD", "ZERO"};
 size_t work_group_size = 512;
 int device_id_inuse = 0;
 bool cpu = false;
@@ -248,7 +248,7 @@ void _clInit()
     //--cambine-2: create an OpenCL context
     cl_context_properties cprops[3] = {CL_CONTEXT_PLATFORM, (cl_context_properties)targetPlatform, 0};
     oclHandles.context = clCreateContextFromType(cprops,
-                                                 cpu ? CL_DEVICE_TYPE_CPU : CL_DEVICE_TYPE_GPU,
+                                                 cpu ? CL_DEVICE_TYPE_CPU : CL_DEVICE_TYPE_GPU, 
                                                  NULL,
                                                  NULL,
                                                  &resultCL);
@@ -309,7 +309,6 @@ void _clInit()
                                             oclHandles.devices[DEVICE_ID_inuse],
                                             CL_QUEUE_PROFILING_ENABLE,
                                             &resultCL);
-    
     #else
     oclHandles.queue = clCreateCommandQueue(oclHandles.context,
                                             oclHandles.devices[DEVICE_ID_inuse],

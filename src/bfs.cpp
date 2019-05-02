@@ -4,14 +4,16 @@
 #include <string>
 #include <cstring>
 #include <unordered_set>
-#include <sys/time.h>
 
 #include "CLHelper.h"
 #include "util.h"
 #include "matrixmarket/mmio.h"
+#include <sys/time.h>
 
 #define MAX_THREADS_PER_BLOCK 256
 
+#define ALPHA 15
+#define BETA 18
 int iterations = 1;
 int source = 0;
 
@@ -92,10 +94,10 @@ void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *
 void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_frontier, int h_new_frontier_size, int edge_list_size, int *h_graph_edges, int *h_graph_visited, int *h_cost)
 {
     int amtloops = 0;
-    int h_graph_frontier_size = 1;
-    int* h_graph_frontier = (int*) malloc(sizeof(int) * no_of_nodes);
+    int old_frontier_vertices = 1;
+    int frontier_edges = h_graph_nodes[source].no_of_edges;
 
-    cl_mem d_graph_nodes, d_graph_frontier, d_graph_frontier_size, d_graph_edges, d_new_frontier, d_new_frontier_size, d_graph_visited, d_cost;
+    cl_mem d_graph_nodes, d_graph_frontier, d_graph_mask, d_new_mask, d_graph_frontier_size, d_graph_edges, d_new_frontier, d_new_frontier_size, d_graph_visited, d_cost;
 
 #ifdef PROFILING
     cl_ulong kernel1_timer = 0;
@@ -106,33 +108,36 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
 
     try
     {
+        int unexplored_edges = edge_list_size;
 
         //--1 transfer data from host to device
-        d_graph_nodes = _clMalloc(no_of_nodes * sizeof(Node), h_graph_nodes);
-        d_graph_frontier = _clMallocRW(no_of_nodes * sizeof(int), h_graph_frontier);
-        d_graph_frontier_size = _clMallocRW(sizeof(int), &h_graph_frontier_size);
-        d_graph_edges = _clMalloc(edge_list_size * sizeof(int), h_graph_edges);
-        d_new_frontier = _clMallocRW(no_of_nodes * sizeof(int), h_new_graph_frontier);
-        d_new_frontier_size = _clMallocRW(sizeof(int), &h_new_frontier_size);
-        d_graph_visited = _clMallocRW(no_of_nodes * sizeof(int), h_graph_visited);
+        d_graph_nodes = _clCreateAndCpyMem(no_of_nodes * sizeof(Node), h_graph_nodes);
+        d_graph_edges = _clCreateAndCpyMem(edge_list_size * sizeof(int), h_graph_edges);
         
+        d_new_frontier = _clMallocRW(no_of_nodes * sizeof(int), h_new_graph_frontier);
+        d_graph_frontier = _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, no_of_nodes * sizeof(int), NULL);
+        d_graph_frontier_size = _clCreateBuffer(CL_MEM_READ_WRITE, sizeof(int), NULL);
+        d_new_frontier_size = _clMallocRW(sizeof(int), &h_new_frontier_size);
+        
+        d_graph_visited = _clMallocRW(no_of_nodes * sizeof(int), h_graph_visited);
+
+        d_graph_mask = _clCreateBuffer(CL_MEM_HOST_NO_ACCESS, no_of_nodes * sizeof(int), NULL);
+        d_new_mask = _clCreateBuffer(CL_MEM_HOST_NO_ACCESS, no_of_nodes * sizeof(int), NULL);
+    
         d_cost = _clMallocRW(no_of_nodes * sizeof(int), h_cost);
 
-        cl_event h2dpreevents[8];
+        cl_event h2dpreevents[5];
         h2dpreevents[0] = _clMemcpyH2D(d_graph_nodes, no_of_nodes * sizeof(Node), h_graph_nodes);
-        h2dpreevents[1] = _clMemcpyH2D(d_graph_frontier, no_of_nodes * sizeof(int), h_graph_frontier);
-        h2dpreevents[2] = _clMemcpyH2D(d_graph_frontier_size, sizeof(int), &h_graph_frontier_size);
-        h2dpreevents[3] = _clMemcpyH2D(d_graph_edges, edge_list_size * sizeof(int), h_graph_edges);
-        h2dpreevents[4] = _clMemcpyH2D(d_new_frontier, no_of_nodes * sizeof(int), h_new_graph_frontier);
-        h2dpreevents[5] = _clMemcpyH2D(d_new_frontier_size, sizeof(int), &h_new_frontier_size);
-        h2dpreevents[6] = _clMemcpyH2D(d_graph_visited, no_of_nodes * sizeof(int), h_graph_visited);
-        h2dpreevents[7] = _clMemcpyH2D(d_cost, no_of_nodes * sizeof(int), h_cost);
+        h2dpreevents[1] = _clMemcpyH2D(d_new_frontier, no_of_nodes * sizeof(int), h_new_graph_frontier);
+        h2dpreevents[2] = _clMemcpyH2D(d_new_frontier_size, sizeof(int), &h_new_frontier_size);
+        h2dpreevents[3] = _clMemcpyH2D(d_graph_visited, no_of_nodes * sizeof(int), h_graph_visited);
+        h2dpreevents[4] = _clMemcpyH2D(d_cost, no_of_nodes * sizeof(int), h_cost);
         
 #ifdef PROFILING
-        _clWait(8, h2dpreevents);
+        _clWait(5, h2dpreevents);
         _clFinish();
        
-        for(int i = 0; i < 8; i++) {
+        for(int i = 0; i < 5; i++) {
             cl_ulong time_start;
             cl_ulong time_end;
 
@@ -142,9 +147,11 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
         }
 #endif
         //--2 invoke kernel
-        cl_event h2devents[1];
+        bool top_down = true;
+
+        cl_event h2devents[3];
         cl_event kernelevents[2];
-        cl_event d2hevents[1];
+        cl_event d2hevents[3];
         do
         {
             amtloops++;
@@ -157,6 +164,10 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
             tmp = d_new_frontier_size;
             d_new_frontier_size = d_graph_frontier_size;
             d_graph_frontier_size = tmp;
+
+            tmp = d_new_mask;
+            d_new_mask = d_graph_mask;
+            d_graph_mask = tmp;
 
             int zero = 0;
             h2devents[0] = _clMemcpyH2D(d_new_frontier_size, sizeof(int), &zero);
@@ -178,23 +189,72 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
 #endif
             clReleaseEvent(h2devents[0]);
 
-            //--kernel 0
-            int kernel_id = 0;
-            int kernel_idx = 0;
-            _clSetArgs(kernel_id, kernel_idx++, d_graph_nodes);
-            _clSetArgs(kernel_id, kernel_idx++, d_graph_frontier);
-            _clSetArgs(kernel_id, kernel_idx++, d_graph_frontier_size);
-            _clSetArgs(kernel_id, kernel_idx++, d_graph_edges);
-            _clSetArgs(kernel_id, kernel_idx++, d_new_frontier);
-            _clSetArgs(kernel_id, kernel_idx++, d_new_frontier_size);
-            _clSetArgs(kernel_id, kernel_idx++, d_graph_visited);
-            _clSetArgs(kernel_id, kernel_idx++, d_cost);
-            _clSetArgs(kernel_id, kernel_idx++, &no_of_nodes, sizeof(int));
 
+            bool shrinking = h_new_frontier_size < old_frontier_vertices;
+
+            if (top_down && frontier_edges > unexplored_edges / ALPHA) { //&& !shrinking) {
+                top_down = false;
+                printf("Switching to BU\n");
+
+                // Reset new bitmap
+                _clSetArgs(4, 0, d_graph_mask);
+                _clSetArgs(4, 1, &no_of_nodes, sizeof(int));
+                _clInvokeKernel(4, no_of_nodes, work_group_size);
+
+                int kernel_idx = 0;
+                _clSetArgs(3, kernel_idx++, d_graph_frontier);
+                _clSetArgs(3, kernel_idx++, d_graph_frontier_size);
+                _clSetArgs(3, kernel_idx++, d_graph_mask);
+                kernelevents[0] = _clInvokeKernel(3, no_of_nodes, work_group_size);
+
+            } else if(!top_down && h_new_frontier_size < no_of_nodes / BETA) { //&& shrinking) {
+                top_down = true;
+                printf("Switching to TD\n");
+
+                int kernel_idx = 0;
+                _clSetArgs(2, kernel_idx++, d_graph_mask);
+                _clSetArgs(2, kernel_idx++, d_graph_frontier);
+                _clSetArgs(2, kernel_idx++, d_graph_frontier_size);
+                _clSetArgs(2, kernel_idx++, &no_of_nodes, sizeof(int));
+                kernelevents[0] = _clInvokeKernel(2, no_of_nodes, work_group_size);
+            }
+
+            unexplored_edges -= frontier_edges;
+
+            //--kernel 0 or 1 (topdown / bottom-up)
+            if(top_down) {
+                int kernel_idx = 0;
+                _clSetArgs(0, kernel_idx++, d_graph_nodes);
+                _clSetArgs(0, kernel_idx++, d_graph_frontier);
+                _clSetArgs(0, kernel_idx++, d_graph_frontier_size);
+                _clSetArgs(0, kernel_idx++, d_graph_edges);
+                _clSetArgs(0, kernel_idx++, d_new_frontier);
+                _clSetArgs(0, kernel_idx++, d_new_frontier_size);
+                _clSetArgs(0, kernel_idx++, d_graph_visited);
+                _clSetArgs(0, kernel_idx++, d_cost);
+                _clSetArgs(0, kernel_idx++, &no_of_nodes, sizeof(int));
+
+                kernelevents[0] = _clInvokeKernel(0, no_of_nodes, work_group_size);
+            } else {
+                // Reset new bitmap
+                _clSetArgs(4, 0, d_new_mask);
+                _clSetArgs(4, 1, &no_of_nodes, sizeof(int));
+                kernelevents[0] = _clInvokeKernel(4, no_of_nodes, work_group_size);
+
+                int kernel_idx = 0;
+                _clSetArgs(1, kernel_idx++, d_graph_nodes);
+                _clSetArgs(1, kernel_idx++, d_graph_mask);
+                _clSetArgs(1, kernel_idx++, d_graph_edges);
+                _clSetArgs(1, kernel_idx++, d_new_mask);
+                _clSetArgs(1, kernel_idx++, d_graph_visited);
+                _clSetArgs(1, kernel_idx++, d_cost);
+                _clSetArgs(1, kernel_idx++, d_new_frontier_size);
+                _clSetArgs(1, kernel_idx++, &no_of_nodes, sizeof(int));
+
+                kernelevents[0] = _clInvokeKernel(1, no_of_nodes, work_group_size);
+            }            
             //int work_items = no_of_nodes;
             // TODO: no_of_nodes should be frontier size;
-            kernelevents[0] = _clInvokeKernel(kernel_id, no_of_nodes, work_group_size);
-
 #ifdef PROFILING
             //Force waiting for kernel to finish.
             _clWait(1, kernelevents);
@@ -211,7 +271,10 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
 #endif
             clReleaseEvent(kernelevents[0]);
 
+            old_frontier_vertices = h_new_frontier_size;
             d2hevents[0] = _clMemcpyD2H(d_new_frontier_size, sizeof(int), &h_new_frontier_size);
+
+            //TODO: frontier_edge_count;
 
 #ifdef PROFILING
             _clWait(1, d2hevents);
@@ -297,8 +360,6 @@ int main(int argc, char *argv[])
     char *h_updating_graph_mask;
     int *h_graph_visited;
     int *h_graph_edges;
-    int *I;
-    int *J;
     double *val;
 
     try
@@ -360,13 +421,18 @@ int main(int argc, char *argv[])
         /*  (ANSI C X3.159-1989, Sec. 4.9.6.2, p. 136 lines 13-15)            */
 
 #ifdef VERBOSE
-        printf("Amt nodes: %d\n", no_of_nodes);
+        printf("Amt nodes: %d, non-zeroes: %d\n", no_of_nodes, nz);
 #endif
         std::unordered_set<int>* construction_set = new std::unordered_set<int>[no_of_nodes];
 
+        // Reserve a rough estimate.
+        for(int i = 0; i < no_of_nodes; i++) {
+            construction_set[i].reserve((int) (nz / no_of_nodes));
+        }
+        
         if(mm_is_pattern(matcode))
         {
-           for (int i = 0; i < nz; i++)
+            for (int i = 0; i < nz; i++)
             {
                 int x, y;
                 if(fscanf(fp, "%d %d\n", &x, &y) != 2) {
@@ -395,6 +461,10 @@ int main(int argc, char *argv[])
             }
         }
         
+#ifdef VERBOSE
+        printf("Done reading nodes. Converting edges...\n");
+#endif
+
         if (fp !=stdin) fclose(fp);
 
         int edge_list_size = nz * 2;
@@ -467,10 +537,11 @@ int main(int argc, char *argv[])
             h_ref_graph_visited[i] = false;
         }
 
-#ifdef VERBOSE
-        printf("Running cpu...\n");
-#endif
-        // Set the source node as true in the mask4
+        #ifdef VERBOSE
+            printf("Running cpu...\n");
+        #endif
+        
+        // Set the source node as true in the mask
         h_cost_ref[source] = 0;
         h_graph_mask[source] = true;
         h_graph_visited[source] = true;
@@ -491,8 +562,6 @@ int main(int argc, char *argv[])
     }
 
     // Release host memory
-    free(I);
-    free(J);
     free(val);
     free(h_graph_nodes);
     

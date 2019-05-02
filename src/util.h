@@ -52,6 +52,7 @@ void verify_array(const datatype *cpuResults, const datatype *clResults, const i
 template<typename datatype>
 void compare_results(const datatype *cpuResults, const datatype *clResults, const int size){
 
+    int not_traversed = 0;
     char passed = true; 
 
     for (int i=0; i<size; i++){
@@ -59,12 +60,22 @@ void compare_results(const datatype *cpuResults, const datatype *clResults, cons
          printf("Diff@%d: %d != %d\n", i, clResults[i], cpuResults[i]);
          passed = false; 
       }
+
+      if (clResults[i] == -1) {
+          not_traversed++;
+      }
     }
     if (passed){
         std::cout << "--cambine:passed:-)" << endl;
     }
     else{
         std::cout << "--cambine: failed:-(" << endl;
+    }
+
+    if(not_traversed == 0) {
+        std::cout << "--cambine:traversal completed :-)" << endl;
+    } else {
+        std::cout << "--cambine:traversed (" << size - not_traversed << " / " << size << ") :-(" << endl;
     }
     return ;
 }
