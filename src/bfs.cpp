@@ -168,7 +168,7 @@ void run_bfs_opencl(int no_of_nodes,
         bool top_down = true;
 
         cl_event h2devents[2];
-        cl_event kernelevents[1];
+        cl_event kernelevents[5];
         cl_event d2hevents[2];
         do
         {
@@ -211,6 +211,8 @@ void run_bfs_opencl(int no_of_nodes,
             clReleaseEvent(h2devents[1]);
 
             bool shrinking = h_new_frontier_size < old_frontier_vertices;
+            int eventindex = 0;
+
 
             if (!has_bottom_upped && top_down && frontier_edges > unexplored_edges / ALPHA && !shrinking) {
                 top_down = false;
@@ -220,13 +222,13 @@ void run_bfs_opencl(int no_of_nodes,
                 // Reset new bitmap
                 _clSetArgs(4, 0, d_graph_mask);
                 _clSetArgs(4, 1, &no_of_nodes, sizeof(int));
-                kernelevents[0] =_clInvokeKernel(4, no_of_nodes, work_group_size);
+                kernelevents[eventindex++] =_clInvokeKernel(4, no_of_nodes, work_group_size);
 
                 int kernel_idx = 0;
                 _clSetArgs(3, kernel_idx++, d_graph_frontier);
                 _clSetArgs(3, kernel_idx++, d_graph_frontier_size);
                 _clSetArgs(3, kernel_idx++, d_graph_mask);
-                kernelevents[0] = _clInvokeKernel(3, no_of_nodes, work_group_size);
+                kernelevents[eventindex++] = _clInvokeKernel(3, no_of_nodes, work_group_size);
 
             } else if(!top_down && h_new_frontier_size < no_of_nodes / BETA && shrinking) {
                 top_down = true;
@@ -237,7 +239,7 @@ void run_bfs_opencl(int no_of_nodes,
                 _clSetArgs(2, kernel_idx++, d_graph_frontier);
                 _clSetArgs(2, kernel_idx++, d_graph_frontier_size);
                 _clSetArgs(2, kernel_idx++, &no_of_nodes, sizeof(int));
-                kernelevents[0] = _clInvokeKernel(2, no_of_nodes, work_group_size);
+                kernelevents[eventindex++] = _clInvokeKernel(2, no_of_nodes, work_group_size);
             }
 
             unexplored_edges -= frontier_edges;
@@ -256,12 +258,12 @@ void run_bfs_opencl(int no_of_nodes,
                 _clSetArgs(0, kernel_idx++, d_cost);
                 _clSetArgs(0, kernel_idx++, &no_of_nodes, sizeof(int));
 
-                kernelevents[0] = _clInvokeKernel(0, no_of_nodes, work_group_size);
+                kernelevents[eventindex++] = _clInvokeKernel(0, no_of_nodes, work_group_size);
             } else {
                 // Reset new bitmap
                 _clSetArgs(4, 0, d_new_mask);
                 _clSetArgs(4, 1, &no_of_nodes, sizeof(int));
-                kernelevents[0] = _clInvokeKernel(4, no_of_nodes, work_group_size);
+                kernelevents[eventindex++] = _clInvokeKernel(4, no_of_nodes, work_group_size);
 
                 int kernel_idx = 0;
                 _clSetArgs(1, kernel_idx++, d_graph_nodes);
@@ -274,22 +276,24 @@ void run_bfs_opencl(int no_of_nodes,
                 _clSetArgs(1, kernel_idx++, d_amount_frontier_edges);
                 _clSetArgs(1, kernel_idx++, &no_of_nodes, sizeof(int));
 
-                kernelevents[0] = _clInvokeKernel(1, no_of_nodes, work_group_size);
+                kernelevents[eventindex++] = _clInvokeKernel(1, no_of_nodes, work_group_size);
             }            
             //int work_items = no_of_nodes;
             // TODO: no_of_nodes should be frontier size;
 #ifdef PROFILING
-            //Force waiting for kernel to finish.
-            _clWait(1, kernelevents);
+            //Force waiting for kernels to finish.
+            _clWait(eventindex, kernelevents);
             _clFinish();
-            
-            cl_ulong time_start;
-            cl_ulong time_end;
 
-            clGetEventProfilingInfo(kernelevents[0], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
-            clGetEventProfilingInfo(kernelevents[0], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
+            for(int i = 0; i < eventindex; i++) {            
+                cl_ulong time_start;
+                cl_ulong time_end;
 
-            kernel_timer += time_end-time_start;
+                clGetEventProfilingInfo(kernelevents[i], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
+                clGetEventProfilingInfo(kernelevents[i], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
+
+                kernel_timer += time_end-time_start;
+            }
 
 #endif
             clReleaseEvent(kernelevents[0]);
@@ -363,7 +367,6 @@ void run_bfs_opencl(int no_of_nodes,
     printf("%0.3f %0.3f %0.3f %0.3f\n", (h2d_timer) / 1000000.0, (kernel_timer) / 1000000.0, (d2h_timer) / 1000000.0, (h2d_timer + kernel_timer + d2h_timer) / 1000000.0);
     #endif
 #endif
-
 }
 //----------------------------------------------------------
 //--cambine:	main function
