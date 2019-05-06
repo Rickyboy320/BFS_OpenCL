@@ -17,6 +17,7 @@ __kernel void BFS_TD(const __global Node* g_graph_nodes,
                     __global int* g_new_frontier,
                     volatile __global int* g_new_frontier_size, 
                     volatile __global int* g_graph_visited, 
+                    __global int* g_amount_frontier_edges,
                     __global int* g_cost, 
                     const int no_of_nodes) {
     int tid = get_global_id(0);
@@ -27,6 +28,7 @@ __kernel void BFS_TD(const __global Node* g_graph_nodes,
         for(int i = node.starting; i < node.starting + node.no_of_edges; i++) 
         {
             int id = g_graph_edges[i];
+            // Double check to save on atomics
             if(atomic_xchg(&g_graph_visited[id], 1) == 0)
             {
                 int old = atomic_inc(g_new_frontier_size);
@@ -34,6 +36,9 @@ __kernel void BFS_TD(const __global Node* g_graph_nodes,
 
                 g_new_frontier[old] = id;
                 g_graph_visited[id] = true;
+
+                Node node = g_graph_nodes[id];
+                atomic_add(g_amount_frontier_edges, node.no_of_edges); 
             }
         }
     }	
@@ -46,6 +51,7 @@ __kernel void BFS_BU(const __global Node* g_graph_nodes,
                     __global int* g_graph_visited, 
                     __global int* g_cost, 
                     __global int* g_new_frontier_size,
+                    __global int* g_amount_frontier_edges,
                     const int no_of_nodes){
     int tid = get_global_id(0);
     
@@ -53,7 +59,8 @@ __kernel void BFS_BU(const __global Node* g_graph_nodes,
     if(tid < no_of_nodes && !g_graph_visited[tid]) 
     {
         // Loop over its edges
-        for(int i = g_graph_nodes[tid].starting; i < g_graph_nodes[tid].starting + g_graph_nodes[tid].no_of_edges; i++) 
+        Node node = g_graph_nodes[tid];
+        for(int i = node.starting; i < node.starting + node.no_of_edges; i++) 
         {
             // If a neighbour is part of the current frontier (mask)
             int id = g_graph_edges[i];
@@ -65,6 +72,7 @@ __kernel void BFS_BU(const __global Node* g_graph_nodes,
                 g_new_mask[tid] = true;
                 g_graph_visited[tid] = true;
                 atomic_inc(g_new_frontier_size);
+                atomic_add(g_amount_frontier_edges, node.no_of_edges); 
                 break;
             }
         }

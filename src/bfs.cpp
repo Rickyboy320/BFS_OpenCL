@@ -91,25 +91,41 @@ void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *
 //----------------------------------------------------------
 //--breadth first search on the OpenCL device
 //----------------------------------------------------------
-void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_frontier, int h_new_frontier_size, int edge_list_size, int *h_graph_edges, int *h_graph_visited, int *h_cost)
+void run_bfs_opencl(int no_of_nodes, 
+                    Node *h_graph_nodes, 
+                    int* h_new_graph_frontier, 
+                    int h_new_frontier_size, 
+                    int edge_list_size, 
+                    int *h_graph_edges, 
+                    int *h_graph_visited, 
+                    int *h_cost)
 {
-    int amtloops = 0;
-    int old_frontier_vertices = 1;
-    int frontier_edges = h_graph_nodes[source].no_of_edges;
+    unsigned int amtloops = 0;
+    unsigned int old_frontier_vertices = 1;
+    unsigned int frontier_edges = h_graph_nodes[source].no_of_edges;
+    unsigned int unexplored_edges = edge_list_size;
+    bool has_bottom_upped = false;
 
-    cl_mem d_graph_nodes, d_graph_frontier, d_graph_mask, d_new_mask, d_graph_frontier_size, d_graph_edges, d_new_frontier, d_new_frontier_size, d_graph_visited, d_cost;
+    cl_mem d_graph_nodes;
+    cl_mem d_graph_frontier;
+    cl_mem d_graph_mask;
+    cl_mem d_new_mask;
+    cl_mem d_graph_frontier_size;
+    cl_mem d_graph_edges;
+    cl_mem d_new_frontier;
+    cl_mem d_new_frontier_size;
+    cl_mem d_graph_visited;
+    cl_mem d_amount_frontier_edges;
+    cl_mem d_cost;
 
 #ifdef PROFILING
-    cl_ulong kernel1_timer = 0;
-    cl_ulong kernel2_timer = 0;
     cl_ulong h2d_timer = 0;
+    cl_ulong kernel_timer = 0;
     cl_ulong d2h_timer = 0;
 #endif
 
     try
     {
-        int unexplored_edges = edge_list_size;
-
         //--1 transfer data from host to device
         d_graph_nodes = _clCreateAndCpyMem(no_of_nodes * sizeof(Node), h_graph_nodes);
         d_graph_edges = _clCreateAndCpyMem(edge_list_size * sizeof(int), h_graph_edges);
@@ -124,6 +140,8 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
         d_graph_mask = _clCreateBuffer(CL_MEM_HOST_NO_ACCESS, no_of_nodes * sizeof(int), NULL);
         d_new_mask = _clCreateBuffer(CL_MEM_HOST_NO_ACCESS, no_of_nodes * sizeof(int), NULL);
     
+        d_amount_frontier_edges = _clCreateBuffer(CL_MEM_READ_WRITE, sizeof(int), NULL);
+
         d_cost = _clMallocRW(no_of_nodes * sizeof(int), h_cost);
 
         cl_event h2dpreevents[5];
@@ -149,9 +167,9 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
         //--2 invoke kernel
         bool top_down = true;
 
-        cl_event h2devents[3];
-        cl_event kernelevents[2];
-        cl_event d2hevents[3];
+        cl_event h2devents[2];
+        cl_event kernelevents[1];
+        cl_event d2hevents[2];
         do
         {
             amtloops++;
@@ -170,14 +188,16 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
             d_graph_mask = tmp;
 
             int zero = 0;
+            int zero2 = 0;
             h2devents[0] = _clMemcpyH2D(d_new_frontier_size, sizeof(int), &zero);
+            h2devents[1] = _clMemcpyH2D(d_amount_frontier_edges, sizeof(int), &zero2);
 
 #ifdef PROFILING
-            _clWait(1, h2devents);
+            _clWait(2, h2devents);
 
             _clFinish();
 
-            for(int i = 0; i < 1; i++) {
+            for(int i = 0; i < 2; i++) {
                 cl_ulong time_start;
                 cl_ulong time_end;
 
@@ -188,18 +208,19 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
             }
 #endif
             clReleaseEvent(h2devents[0]);
-
+            clReleaseEvent(h2devents[1]);
 
             bool shrinking = h_new_frontier_size < old_frontier_vertices;
 
-            if (top_down && frontier_edges > unexplored_edges / ALPHA) { //&& !shrinking) {
+            if (!has_bottom_upped && top_down && frontier_edges > unexplored_edges / ALPHA && !shrinking) {
                 top_down = false;
+                has_bottom_upped = true;
                 printf("Switching to BU\n");
 
                 // Reset new bitmap
                 _clSetArgs(4, 0, d_graph_mask);
                 _clSetArgs(4, 1, &no_of_nodes, sizeof(int));
-                _clInvokeKernel(4, no_of_nodes, work_group_size);
+                kernelevents[0] =_clInvokeKernel(4, no_of_nodes, work_group_size);
 
                 int kernel_idx = 0;
                 _clSetArgs(3, kernel_idx++, d_graph_frontier);
@@ -207,7 +228,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
                 _clSetArgs(3, kernel_idx++, d_graph_mask);
                 kernelevents[0] = _clInvokeKernel(3, no_of_nodes, work_group_size);
 
-            } else if(!top_down && h_new_frontier_size < no_of_nodes / BETA) { //&& shrinking) {
+            } else if(!top_down && h_new_frontier_size < no_of_nodes / BETA && shrinking) {
                 top_down = true;
                 printf("Switching to TD\n");
 
@@ -231,6 +252,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
                 _clSetArgs(0, kernel_idx++, d_new_frontier);
                 _clSetArgs(0, kernel_idx++, d_new_frontier_size);
                 _clSetArgs(0, kernel_idx++, d_graph_visited);
+                _clSetArgs(0, kernel_idx++, d_amount_frontier_edges);
                 _clSetArgs(0, kernel_idx++, d_cost);
                 _clSetArgs(0, kernel_idx++, &no_of_nodes, sizeof(int));
 
@@ -249,6 +271,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
                 _clSetArgs(1, kernel_idx++, d_graph_visited);
                 _clSetArgs(1, kernel_idx++, d_cost);
                 _clSetArgs(1, kernel_idx++, d_new_frontier_size);
+                _clSetArgs(1, kernel_idx++, d_amount_frontier_edges);
                 _clSetArgs(1, kernel_idx++, &no_of_nodes, sizeof(int));
 
                 kernelevents[0] = _clInvokeKernel(1, no_of_nodes, work_group_size);
@@ -266,21 +289,19 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
             clGetEventProfilingInfo(kernelevents[0], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
             clGetEventProfilingInfo(kernelevents[0], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
 
-            kernel1_timer += time_end-time_start;
+            kernel_timer += time_end-time_start;
 
 #endif
             clReleaseEvent(kernelevents[0]);
 
             old_frontier_vertices = h_new_frontier_size;
             d2hevents[0] = _clMemcpyD2H(d_new_frontier_size, sizeof(int), &h_new_frontier_size);
-
-            //TODO: frontier_edge_count;
-
+            d2hevents[1] = _clMemcpyD2H(d_amount_frontier_edges, sizeof(int), &frontier_edges);
 #ifdef PROFILING
-            _clWait(1, d2hevents);
+            _clWait(2, d2hevents);
             _clFinish();
 
-            for(int i = 0; i < 1; i++) {
+            for(int i = 0; i < 2; i++) {
                 cl_ulong time_start;
                 cl_ulong time_end;
 
@@ -290,8 +311,9 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
                 d2h_timer += time_end - time_start;
             }
 
-            clReleaseEvent(d2hevents[0]);
 #endif
+            clReleaseEvent(d2hevents[0]);
+            clReleaseEvent(d2hevents[1]);
         } while (h_new_frontier_size > 0);
 
         _clFinish();
@@ -334,11 +356,11 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
     #ifdef VERBOSE
     printf("Took %d loops\n", amtloops);
     printf("\tTotal h2d time is: %0.3f milliseconds \n", (h2d_timer) / 1000000.0);
-    printf("\tTotal kernel time is: %0.3f milliseconds \n", (kernel1_timer + kernel2_timer) / 1000000.0);
+    printf("\tTotal kernel time is: %0.3f milliseconds \n", (kernel_timer) / 1000000.0);
     printf("\tTotal d2h time is: %0.3f milliseconds \n", (d2h_timer) / 1000000.0);
-    printf("\tTotal time: %0.3f milliseconds \n", (h2d_timer + kernel1_timer + kernel2_timer + d2h_timer) / 1000000.0);
+    printf("\tTotal time: %0.3f milliseconds \n", (h2d_timer + kernel_timer + d2h_timer) / 1000000.0);
     #else
-    printf("%0.3f %0.3f %0.3f %0.3f\n", (h2d_timer) / 1000000.0, (kernel1_timer + kernel2_timer) / 1000000.0, (d2h_timer) / 1000000.0, (h2d_timer + kernel1_timer + kernel2_timer + d2h_timer) / 1000000.0);
+    printf("%0.3f %0.3f %0.3f %0.3f\n", (h2d_timer) / 1000000.0, (kernel_timer) / 1000000.0, (d2h_timer) / 1000000.0, (h2d_timer + kernel_timer + d2h_timer) / 1000000.0);
     #endif
 #endif
 
