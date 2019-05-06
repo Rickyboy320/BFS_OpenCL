@@ -217,8 +217,9 @@ void run_bfs_opencl(int no_of_nodes,
             if (!has_bottom_upped && top_down && frontier_edges > unexplored_edges / ALPHA && !shrinking) {
                 top_down = false;
                 has_bottom_upped = true;
+#ifdef VERBOSE
                 printf("Switching to BU\n");
-
+#endif
                 // Reset new bitmap
                 _clSetArgs(4, 0, d_graph_mask);
                 _clSetArgs(4, 1, &no_of_nodes, sizeof(int));
@@ -232,8 +233,9 @@ void run_bfs_opencl(int no_of_nodes,
 
             } else if(!top_down && h_new_frontier_size < no_of_nodes / BETA && shrinking) {
                 top_down = true;
+#ifdef VERBOSE
                 printf("Switching to TD\n");
-
+#endif
                 int kernel_idx = 0;
                 _clSetArgs(2, kernel_idx++, d_graph_mask);
                 _clSetArgs(2, kernel_idx++, d_graph_frontier);
