@@ -148,7 +148,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
 
         cl_event h2devents[3];
         cl_event kernelevents[2];
-        cl_event d2hevents[3];
+        cl_event d2hevents[2];
         do
         {
             amtloops++;
@@ -242,14 +242,13 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
             clReleaseEvent(kernelevents[0]);
             clReleaseEvent(kernelevents[1]);
 
-            d2hevents[0] = _clMemcpyD2H(d_over, sizeof(char), &h_over);
-            d2hevents[1] = _clMemcpyD2H(d_frontier_vertices, sizeof(int), &frontier_vertices);
-            d2hevents[2] = _clMemcpyD2H(d_frontier_edges, sizeof(int), &frontier_edges);
+            d2hevents[0] = _clMemcpyD2H(d_frontier_vertices, sizeof(int), &frontier_vertices);
+            d2hevents[1] = _clMemcpyD2H(d_frontier_edges, sizeof(int), &frontier_edges);
 #ifdef PROFILING
-            _clWait(3, d2hevents);
+            _clWait(2, d2hevents);
             _clFinish();
 
-            for(int i = 0; i < 3; i++) {
+            for(int i = 0; i < 2; i++) {
                 cl_ulong time_start;
                 cl_ulong time_end;
 
@@ -261,7 +260,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
 
             clReleaseEvent(d2hevents[0]);
 #endif
-        } while (h_over);
+        } while (frontier_vertices > 0);
 
 
 #ifdef VERBOSE

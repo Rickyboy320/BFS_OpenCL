@@ -25,7 +25,7 @@ __kernel void BFS_TD(const __global Node* g_graph_nodes,
         for(int i = g_graph_nodes[tid].starting; i < g_graph_nodes[tid].starting + g_graph_nodes[tid].no_of_edges; i++) 
         {
             int id = g_graph_edges[i];
-            if(!g_graph_visited[id] && !g_updating_graph_mask[id])
+            if(!g_graph_visited[id] && !g_new_graph_mask[id])
             {
                 g_cost[id] = g_cost[tid] + 1;
                 g_new_graph_mask[id] = true;
