@@ -28,7 +28,6 @@ __kernel void BFS_TD(const __global Node* g_graph_nodes,
         for(int i = node.starting; i < node.starting + node.no_of_edges; i++) 
         {
             int id = g_graph_edges[i];
-            // Double check to save on atomics
             if(atomic_xchg(&g_graph_visited[id], 1) == 0)
             {
                 int old = atomic_inc(g_new_frontier_size);
