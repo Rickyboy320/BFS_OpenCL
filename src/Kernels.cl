@@ -80,8 +80,8 @@ __kernel void BFS_UPDATE(const __global Node* g_graph_nodes,
         *g_over=true;
         g_updating_graph_mask[tid]=false;
 
-        *frontier_edges += g_graph_nodes[tid].no_of_edges;
-        *frontier_vertices += 1;
+        atomic_add(frontier_edges, g_graph_nodes[tid].no_of_edges);
+        atomic_inc(frontier_vertices);
     }
 }
 
