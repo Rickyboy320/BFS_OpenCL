@@ -82,8 +82,8 @@ void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *
 #endif
 #ifdef PROFILING
     timestamp_t t1 = get_timestamp();
-    double secs = (t1 - t0) / 1000000.0L;
-    std::cout << "\treference time (sequential)(s):" << secs << std::endl;
+    double secs = (t1 - t0) / 1000.0L;
+    std::cout << "\treference time (sequential)(ms):" << secs << std::endl;
 #endif
 }
 //----------------------------------------------------------
