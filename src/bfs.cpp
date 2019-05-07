@@ -145,6 +145,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
         //--2 invoke kernel
         int amtloops = 0;
         bool top_down = true;
+        bool has_been_bottom = false;
 
         cl_event h2devents[3];
         cl_event kernelevents[2];
@@ -179,17 +180,14 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, in
 
             bool shrinking = frontier_vertices < old_frontier_vertices;
 
-            if (top_down && frontier_edges > unexplored_edges / ALPHA && !shrinking) {
-                printf("Switching to BU\n");
+            if (!has_been_bottom && top_down && frontier_edges > unexplored_edges / ALPHA && !shrinking) {
                 top_down = false;
+                has_been_bottom = true;
             } else if(!top_down && frontier_vertices < no_of_nodes / BETA && shrinking) {
                 top_down = true;
-                printf("Switching to TD\n");
             }
 
             unexplored_edges -= frontier_edges;
-
-            printf("shrinking: %s, topdown: %s, frontier_edges: %d, unexplored_edges: %d, frontier_vertices: %d, no_of_nodes: %d\n", shrinking ? "true" : "false", top_down ? "true" : "false", frontier_edges, unexplored_edges, frontier_vertices, no_of_nodes);
 
             //--kernel 0 or 1 (topdown / bottom-up)
             int kernel_id = top_down ? 0 : 1;
