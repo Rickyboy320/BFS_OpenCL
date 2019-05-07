@@ -192,8 +192,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
             _clSetArgs(kernel_id, kernel_idx++, &no_of_nodes, sizeof(int));
 
             //int work_items = no_of_nodes;
-            // TODO: no_of_nodes should be frontier size;
-            kernelevents[0] = _clInvokeKernel(kernel_id, no_of_nodes, work_group_size);
+            kernelevents[0] = _clInvokeKernel(kernel_id, h_new_frontier_size, work_group_size);
 
 #ifdef PROFILING
             //Force waiting for kernel to finish.
