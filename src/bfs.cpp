@@ -2,7 +2,6 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
-#include <cstring>
 #include <unordered_set>
 
 #include "CLHelper.h"
@@ -169,6 +168,7 @@ void run_bfs_opencl(int no_of_nodes,
 
         cl_event h2devents[2];
         cl_event kernelevents[5];
+        string kernelstrings[5];
         cl_event d2hevents[2];
         do
         {
@@ -213,7 +213,6 @@ void run_bfs_opencl(int no_of_nodes,
             bool shrinking = h_new_frontier_size < old_frontier_vertices;
             int eventindex = 0;
 
-
             if (!has_bottom_upped && top_down && frontier_edges > unexplored_edges / ALPHA && !shrinking) {
                 top_down = false;
                 has_bottom_upped = true;
@@ -223,12 +222,14 @@ void run_bfs_opencl(int no_of_nodes,
                 // Reset new bitmap
                 _clSetArgs(4, 0, d_graph_mask);
                 _clSetArgs(4, 1, &no_of_nodes, sizeof(int));
+                kernelstrings[eventindex] = "Zero for conversion to BU";
                 kernelevents[eventindex++] =_clInvokeKernel(4, no_of_nodes, work_group_size);
 
                 int kernel_idx = 0;
                 _clSetArgs(3, kernel_idx++, d_graph_frontier);
                 _clSetArgs(3, kernel_idx++, d_graph_frontier_size);
                 _clSetArgs(3, kernel_idx++, d_graph_mask);
+                kernelstrings[eventindex] = "Conversion to BU";
                 kernelevents[eventindex++] = _clInvokeKernel(3, no_of_nodes, work_group_size);
 
             } else if(!top_down && h_new_frontier_size < no_of_nodes / BETA && shrinking) {
@@ -241,6 +242,7 @@ void run_bfs_opencl(int no_of_nodes,
                 _clSetArgs(2, kernel_idx++, d_graph_frontier);
                 _clSetArgs(2, kernel_idx++, d_graph_frontier_size);
                 _clSetArgs(2, kernel_idx++, &no_of_nodes, sizeof(int));
+                kernelstrings[eventindex] = "Zero for conversion to TD";
                 kernelevents[eventindex++] = _clInvokeKernel(2, no_of_nodes, work_group_size);
             }
 
@@ -260,11 +262,13 @@ void run_bfs_opencl(int no_of_nodes,
                 _clSetArgs(0, kernel_idx++, d_cost);
                 _clSetArgs(0, kernel_idx++, &no_of_nodes, sizeof(int));
 
+                kernelstrings[eventindex] = "TD cycle";
                 kernelevents[eventindex++] = _clInvokeKernel(0, no_of_nodes, work_group_size);
             } else {
                 // Reset new bitmap
                 _clSetArgs(4, 0, d_new_mask);
                 _clSetArgs(4, 1, &no_of_nodes, sizeof(int));
+                kernelstrings[eventindex] = "Zero for BU cycle";
                 kernelevents[eventindex++] = _clInvokeKernel(4, no_of_nodes, work_group_size);
 
                 int kernel_idx = 0;
@@ -277,7 +281,7 @@ void run_bfs_opencl(int no_of_nodes,
                 _clSetArgs(1, kernel_idx++, d_new_frontier_size);
                 _clSetArgs(1, kernel_idx++, d_amount_frontier_edges);
                 _clSetArgs(1, kernel_idx++, &no_of_nodes, sizeof(int));
-
+                kernelstrings[eventindex] = "BU cycle";
                 kernelevents[eventindex++] = _clInvokeKernel(1, no_of_nodes, work_group_size);
             }            
             //int work_items = no_of_nodes;
@@ -295,6 +299,10 @@ void run_bfs_opencl(int no_of_nodes,
                 clGetEventProfilingInfo(kernelevents[i], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
 
                 kernel_timer += time_end-time_start;
+
+                #ifdef VERBOSE
+                printf("%s took %0.8f\n", kernelstrings[i].c_str(), (time_end - time_start) / 1000000.0);
+                #endif
             }
 
 #endif
