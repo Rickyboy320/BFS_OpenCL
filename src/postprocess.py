@@ -89,31 +89,36 @@ with open(file_gunrock, 'r') as gunrock:
         if line.startswith(" max. elapsed"):
             gunrock_max = float(line.split(" ")[-2])
 
-plt.bar([0, 1, 2, 3, 4, 5, 6, 7, 8, 9], 
+xs = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+plt.bar(xs, 
     [gunrock_avg, gpu_avg, gpu_dat_avg, gpu_dir_avg, gpu_dat_dir_avg, gapbs_avg, cpu_avg, cpu_dat_avg, cpu_dir_avg, cpu_dat_dir_avg], 
     yerr=[[gunrock_max - gunrock_avg, gpu_max - gpu_avg, gpu_dat_max - gpu_dat_avg, gpu_dir_max - gpu_dir_avg, gpu_dat_dir_max - gpu_dat_dir_avg,
            gapbs_max - gapbs_avg, cpu_max - cpu_avg, cpu_dat_max - cpu_dat_avg, cpu_dir_max - cpu_dir_avg, cpu_dat_dir_max - cpu_dat_dir_avg], 
           [gunrock_avg - gunrock_min, gpu_avg - gpu_min, gpu_dat_avg - gpu_dat_min, gpu_dir_avg - gpu_dir_min, gpu_dat_dir_avg - gpu_dat_dir_min,
            gapbs_avg - gapbs_min, cpu_avg - cpu_min, cpu_dat_avg - cpu_dat_min, cpu_dir_avg - cpu_dir_min, cpu_dat_dir_avg - cpu_dat_dir_min]],
-    ecolor='red',
-    tick_label=['Gunrock (gpu)', 'Rodinia gpu', 'Datastructure optimized rodinia gpu', 'Direction optimized gpu', 'Datastructure & Direction optimized gpu',
-                'GAP (cpu)', 'Rodinia cpu', 'Datastructure optimized rodinia cpu', 'Direction optimized cpu', 'Datastructure & Direction optimized cpu'])
+    ecolor='red')
+plt.xticks(xs, ['Gunrock (gpu)', 'Rodinia gpu', 'Datastructure rodinia gpu', 'Direction optimizing gpu', 'Datastructure & Direction gpu',
+                'GAP (cpu)', 'Rodinia cpu', 'Datastructure rodinia cpu', 'Direction optimizing cpu', 'Datastructure & Direction cpu'],
+                rotation='vertical')
 plt.xlabel("Platform and implementation")
 plt.ylabel("Execution time (ms)")
 plt.title("Execution time for unoptimized Rodinia\n compared to Gunrock and GAP on" + graph)
+plt.tight_layout()
 plt.savefig("exec_" + graph + ".pdf")
 #plt.show()
 
 
-fig, (ax1, ax2) = plt.subplots(1, 2, sharey=True)
-ax1.bar([0, 1, 2, 3, 4], 
-    [100, gunrock_avg / gpu_avg * 100, gunrock_avg / gpu_dat_avg * 100, gunrock_avg / gpu_dir_avg * 100, gunrock_avg / gpu_dat_dir_avg * 100],
-    tick_label=['Gunrock (gpu)', 'Rodinia gpu', 'Datastruct optimized', 'Direction optimized', 'Datastruct & Direction'])
+fig, (ax1, ax2) = plt.subplots(1, 2, sharey=False)
+xs = [2, 3, 4, 5]
+ax1.bar(xs, 
+    [gunrock_avg / gpu_avg * 100, gunrock_avg / gpu_dat_avg * 100, gunrock_avg / gpu_dir_avg * 100, gunrock_avg / gpu_dat_dir_avg * 100])
+ax1.set_xticklabels(['...', 'Rodinia gpu', 'Datastruct', 'Direction optimizing', 'Datastruct & Direction'], rotation='vertical')
 ax1.set_ylabel("Application Efficiency (%)")
 
-ax2.bar([0, 1, 2, 3, 4], 
-    [100, gapbs_avg / cpu_avg * 100, gapbs_avg / cpu_dat_avg * 100, gapbs_avg / cpu_dir_avg * 100, gapbs_avg / cpu_dat_dir_avg * 100],
-    tick_label=['GAP (cpu)', 'Rodinia cpu', 'Datastructure optimized', 'Direction optimized', 'Datastruct & Direction'])
+ax2.bar(xs, 
+    [gapbs_avg / cpu_avg * 100, gapbs_avg / cpu_dat_avg * 100, gapbs_avg / cpu_dir_avg * 100, gapbs_avg / cpu_dat_dir_avg * 100])
+ax2.set_xticklabels(['...', 'Rodinia cpu', 'Datastructure', 'Direction optimizing', 'Datastruct & Direction'], rotation='vertical')
 fig.suptitle("Application Efficiency for unoptimized Rodinia\n compared to Gunrock and GAP on " + graph)
+plt.tight_layout()
 plt.savefig("appeff_" + graph + ".pdf")
 #plt.show()
