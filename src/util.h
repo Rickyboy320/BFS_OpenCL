@@ -52,12 +52,17 @@ void verify_array(const datatype *cpuResults, const datatype *clResults, const i
 template<typename datatype>
 void compare_results(const datatype *cpuResults, const datatype *clResults, const int size){
 
+    int not_traversed = 0;
     char passed = true; 
-    #pragma omp parallel for
+
     for (int i=0; i<size; i++){
       if (cpuResults[i]!=clResults[i]){
-         // printf("Diff: %d != %d\n", clResults[i], cpuResults[i]);
+         printf("Diff@%d: %d != %d\n", i, clResults[i], cpuResults[i]);
          passed = false; 
+      }
+
+      if (clResults[i] == -1) {
+          not_traversed++;
       }
     }
     if (passed){
@@ -65,6 +70,12 @@ void compare_results(const datatype *cpuResults, const datatype *clResults, cons
     }
     else{
         std::cout << "--cambine: failed:-(" << std::endl;
+    }
+
+    if(not_traversed == 0) {
+        std::cout << "--cambine:traversal completed :-)" << std::endl;
+    } else {
+        std::cout << "--cambine:traversed (" << size - not_traversed << " / " << size << ") :-(" << std::endl;
     }
     return ;
 }

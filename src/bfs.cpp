@@ -1,9 +1,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <string>
-#include <cstring>
 #include <unordered_set>
-#include <sys/time.h>
 
 #include <cuda_runtime.h>
 
@@ -16,9 +14,12 @@
 // Helper
 #include "util.h"
 #include "matrixmarket/mmio.h"
+#include <sys/time.h>
 
 #define MAX_THREADS_PER_BLOCK 256
 
+#define ALPHA 15
+#define BETA 18
 int iterations = 1;
 int source = 0;
 int deviceid = 0;
@@ -41,7 +42,7 @@ static timestamp_t get_timestamp ()
 //--date:	26/01/2011
 //--note: width is changed to the new_width
 //----------------------------------------------------------
-void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *h_graph_edges, char* h_graph_mask, char* h_updating_graph_mask, char* h_graph_visited, int *h_cost_ref)
+void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *h_graph_edges, char* h_graph_mask, char* h_updating_graph_mask, int* h_graph_visited, int *h_cost_ref)
 {
 #ifdef PROFILING
     timestamp_t t0 = get_timestamp();
@@ -94,17 +95,33 @@ void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *
 //----------------------------------------------------------
 //--breadth first search on the CUDA device
 //----------------------------------------------------------
-void run_bfs_cuda(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *h_graph_edges, char *h_graph_mask, char *h_updating_graph_mask, char *h_graph_visited, int *h_cost)
+void run_bfs_cuda(int no_of_nodes, 
+                  Node *h_graph_nodes, 
+                  int* h_new_graph_frontier, 
+                  int h_new_frontier_size, 
+                  int edge_list_size, 
+                  int *h_graph_edges, 
+                  int *h_graph_visited, 
+                  int *h_cost)
 {
-    char h_over = false;
+    unsigned int amtloops = 0;
+    unsigned int old_frontier_vertices = 1;
+    unsigned int frontier_edges = h_graph_nodes[source].no_of_edges;
+    unsigned int unexplored_edges = edge_list_size;
+    bool has_bottom_upped = false;
 
     Node* d_graph_nodes;
-    int* d_graph_edges;
+    int* d_graph_frontier;
     char* d_graph_mask;
-    char* d_updating_graph_mask;
-    char* d_graph_visited;
+    char* d_new_mask;
+    int* d_graph_frontier_size;
+    int* d_graph_edges;
+    int* d_new_frontier;
+    int* d_new_frontier_size;
+    int* d_graph_visited;
+    int* d_amount_frontier_edges;
     int* d_cost;
-    char* d_over;
+
 
 #ifdef PROFILING
     float kernel_timer = 0;
@@ -120,23 +137,37 @@ void run_bfs_cuda(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int 
 
     try
     {
+        // checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_nodes), no_of_nodes * sizeof(Node)));
+        //         checkCudaErrors(cudaMemcpy(d_graph_nodes, h_graph_nodes, no_of_nodes * sizeof(Node), cudaMemcpyHostToDevice));
+
+
         //--1 transfer data from host to device
         checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_nodes), no_of_nodes * sizeof(Node)));
         checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_edges), edge_list_size * sizeof(int)));
+        
+        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_new_frontier), no_of_nodes * sizeof(int)));
+        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_frontier), no_of_nodes * sizeof(int)));
+        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_frontier_size), no_of_nodes * sizeof(int)));
+        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_frontier_size), sizeof(int)));
+        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_new_frontier_size), sizeof(int)));
+
+        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_visited), no_of_nodes * sizeof(int)));        
+ 
         checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_mask), no_of_nodes * sizeof(char)));
-        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_updating_graph_mask), no_of_nodes * sizeof(char)));
-        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_visited), no_of_nodes * sizeof(char)));
+        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_new_mask), no_of_nodes * sizeof(char)));
+
+        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_amount_frontier_edges), sizeof(int)));    
+ 
         checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_cost), no_of_nodes * sizeof(int)));
-        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_over), sizeof(char)));
 
 #ifdef PROFILING
         checkCudaErrors(cudaEventRecord(start, NULL));
 #endif
         checkCudaErrors(cudaMemcpy(d_graph_nodes, h_graph_nodes, no_of_nodes * sizeof(Node), cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpy(d_graph_edges, h_graph_edges, edge_list_size * sizeof(int), cudaMemcpyHostToDevice));
-        checkCudaErrors(cudaMemcpy(d_graph_mask, h_graph_mask, no_of_nodes * sizeof(char), cudaMemcpyHostToDevice));
-        checkCudaErrors(cudaMemcpy(d_updating_graph_mask, h_updating_graph_mask, no_of_nodes * sizeof(char), cudaMemcpyHostToDevice));
-        checkCudaErrors(cudaMemcpy(d_graph_visited, h_graph_visited, no_of_nodes * sizeof(char), cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(d_new_frontier, h_new_graph_frontier, no_of_nodes * sizeof(int), cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(d_new_frontier_size, &h_new_frontier_size, sizeof(int), cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(d_graph_visited, h_graph_visited, no_of_nodes * sizeof(int), cudaMemcpyHostToDevice));
         checkCudaErrors(cudaMemcpy(d_cost, h_cost, no_of_nodes * sizeof(int), cudaMemcpyHostToDevice));
 
 #ifdef PROFILING
@@ -148,36 +179,73 @@ void run_bfs_cuda(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int 
         h2d_timer += msecTotal;
 #endif
         //--2 invoke kernel
-        int amtloops = 0;
-
+        bool top_down = true;
         dim3 grid(num_of_blocks, 1, 1);
         dim3 threads(num_of_threads_per_block, 1, 1);
 
         do
         {
             amtloops++;
+            
+            // 'Swap' buffers
+            int* tmp = d_new_frontier;
+            d_new_frontier = d_graph_frontier;
+            d_graph_frontier = tmp;
 
-            h_over = false; 
+            tmp = d_new_frontier_size;
+            d_new_frontier_size = d_graph_frontier_size;
+            d_graph_frontier_size = tmp;
 
+            char* tmp2 = d_new_mask;
+            d_new_mask = d_graph_mask;
+            d_graph_mask = tmp2;
+
+            int zero = 0;
+            int zero2 = 0;
 #ifdef PROFILING
             checkCudaErrors(cudaEventRecord(start, NULL));
-#endif        
-
-            checkCudaErrors(cudaMemcpy(d_over, &h_over, sizeof(char), cudaMemcpyHostToDevice));
-
+#endif
+            checkCudaErrors(cudaMemcpy(d_new_frontier_size, &zero, sizeof(int), cudaMemcpyHostToDevice));
+            checkCudaErrors(cudaMemcpy(d_amount_frontier_edges, &zero2, sizeof(int), cudaMemcpyHostToDevice));
 #ifdef PROFILING
             checkCudaErrors(cudaEventRecord(stop, NULL));
             checkCudaErrors(cudaEventSynchronize(stop));
 
-            msecTotal = 0.0f;
+            float msecTotal = 0.0f;
             checkCudaErrors(cudaEventElapsedTime(&msecTotal, start, stop));
             h2d_timer += msecTotal;
-
-            checkCudaErrors(cudaEventRecord(start, NULL));
 #endif
-            //int work_items = no_of_nodes;
-            run_Bfs1(grid, threads, d_graph_nodes, d_graph_edges, d_graph_mask, d_updating_graph_mask, d_graph_visited, d_cost, no_of_nodes);
-            run_Bfs2(grid, threads, d_graph_mask, d_updating_graph_mask, d_graph_visited, d_over, no_of_nodes);
+
+            bool shrinking = h_new_frontier_size < old_frontier_vertices;
+
+            if (!has_bottom_upped && top_down && frontier_edges > unexplored_edges / ALPHA && !shrinking) {
+                top_down = false;
+                has_bottom_upped = true;
+#ifdef VERBOSE
+                printf("Switching to BU\n");
+#endif
+                // Reset new bitmap
+                run_zero(grid, threads, d_graph_mask, no_of_nodes);
+                run_convert_TD(grid, threads, d_graph_frontier, d_graph_frontier_size, d_graph_mask);
+            } else if(!top_down && h_new_frontier_size < no_of_nodes / BETA && shrinking) {
+                top_down = true;
+#ifdef VERBOSE
+                printf("Switching to TD\n");
+#endif
+                run_convert_BU(grid, threads, d_graph_mask, d_graph_frontier, d_graph_frontier_size, no_of_nodes);
+            }
+
+            unexplored_edges -= frontier_edges;
+
+            //--kernel 0 or 1 (topdown / bottom-up)
+            if(top_down) {
+                run_TD(grid, threads, d_graph_nodes, d_graph_frontier, d_graph_frontier_size, d_graph_edges, d_new_frontier, d_new_frontier_size, d_graph_visited, d_amount_frontier_edges, d_cost, no_of_nodes);
+            } else {
+                // Reset new bitmap
+                run_zero(grid, threads, d_new_mask, no_of_nodes);
+                run_BU(grid, threads, d_graph_nodes, d_graph_mask, d_graph_edges, d_new_mask, d_graph_visited, d_cost, d_new_frontier_size, d_amount_frontier_edges, no_of_nodes);
+           }            
+            // TODO: no_of_nodes should be frontier size;
 
 #ifdef PROFILING
             checkCudaErrors(cudaEventRecord(stop, NULL));
@@ -189,7 +257,9 @@ void run_bfs_cuda(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int 
 
             checkCudaErrors(cudaEventRecord(start, NULL));
 #endif
-            checkCudaErrors(cudaMemcpy(&h_over, d_over, sizeof(char), cudaMemcpyDeviceToHost));
+            old_frontier_vertices = h_new_frontier_size;
+            checkCudaErrors(cudaMemcpy(&h_new_frontier_size, d_new_frontier_size, sizeof(int), cudaMemcpyDeviceToHost));
+            checkCudaErrors(cudaMemcpy(&frontier_edges, d_amount_frontier_edges, sizeof(int), cudaMemcpyDeviceToHost));
 
 #ifdef PROFILING
             checkCudaErrors(cudaEventRecord(stop, NULL));
@@ -199,7 +269,7 @@ void run_bfs_cuda(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int 
             checkCudaErrors(cudaEventElapsedTime(&msecTotal, start, stop));
             d2h_timer += msecTotal;
 #endif
-        } while (h_over);
+        } while (h_new_frontier_size > 0);
 
 #ifdef VERBOSE
         printf("Took %d loops\n", amtloops);
@@ -226,12 +296,13 @@ void run_bfs_cuda(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int 
 
     //--4 release cuda resources.
     checkCudaErrors(cudaFree(d_graph_nodes));
+    checkCudaErrors(cudaFree(d_graph_frontier));
+    checkCudaErrors(cudaFree(d_graph_frontier_size));
     checkCudaErrors(cudaFree(d_graph_edges));
-    checkCudaErrors(cudaFree(d_graph_mask));
-    checkCudaErrors(cudaFree(d_updating_graph_mask));
+    checkCudaErrors(cudaFree(d_new_frontier));
+    checkCudaErrors(cudaFree(d_new_frontier_size));
     checkCudaErrors(cudaFree(d_graph_visited));
     checkCudaErrors(cudaFree(d_cost));
-    checkCudaErrors(cudaFree(d_over));
 
 #ifdef PROFILING    
     #ifdef VERBOSE
@@ -243,7 +314,6 @@ void run_bfs_cuda(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int 
     printf("%0.3f %0.3f %0.3f %0.3f\n", (h2d_timer), (kernel_timer), (d2h_timer), (h2d_timer + kernel_timer + d2h_timer));
     #endif
 #endif
-
 }
 //----------------------------------------------------------
 //--cambine:	main function
@@ -257,9 +327,10 @@ int main(int argc, char *argv[])
     int no_of_nodes;
 
     Node *h_graph_nodes;
+    int *h_graph_frontier;
     char *h_graph_mask;
     char *h_updating_graph_mask;
-    char *h_graph_visited;
+    int *h_graph_visited;
     int *h_graph_edges;
     double *val;
 
@@ -324,13 +395,18 @@ int main(int argc, char *argv[])
         /*  (ANSI C X3.159-1989, Sec. 4.9.6.2, p. 136 lines 13-15)            */
 
 #ifdef VERBOSE
-        printf("Amt nodes: %d\n", no_of_nodes);
+        printf("Amt nodes: %d, non-zeroes: %d\n", no_of_nodes, nz);
 #endif
         std::unordered_set<int>* construction_set = new std::unordered_set<int>[no_of_nodes];
 
+        // Reserve a rough estimate.
+        for(int i = 0; i < no_of_nodes; i++) {
+            construction_set[i].reserve((int) (nz / no_of_nodes));
+        }
+        
         if(mm_is_pattern(matcode))
         {
-           for (int i = 0; i < nz; i++)
+            for (int i = 0; i < nz; i++)
             {
                 int x, y;
                 if(fscanf(fp, "%d %d\n", &x, &y) != 2) {
@@ -359,6 +435,10 @@ int main(int argc, char *argv[])
             }
         }
         
+#ifdef VERBOSE
+        printf("Done reading nodes. Converting edges...\n");
+#endif
+
         if (fp !=stdin) fclose(fp);
 
         int edge_list_size = nz * 2;
@@ -374,8 +454,9 @@ int main(int argc, char *argv[])
         // Allocate host memory
         h_graph_nodes = (Node *)malloc(sizeof(Node) * no_of_nodes);
         h_graph_mask = (char *)malloc(sizeof(char) * no_of_nodes);
+        h_graph_frontier = (int *)malloc(sizeof(int) * no_of_nodes);
         h_updating_graph_mask = (char *)malloc(sizeof(char) * no_of_nodes);
-        h_graph_visited = (char *)malloc(sizeof(char) * no_of_nodes);
+        h_graph_visited = (int *)malloc(sizeof(int) * no_of_nodes);
 
         int index = 0;
         for (int i = 0; i < no_of_nodes; i++)
@@ -388,7 +469,7 @@ int main(int argc, char *argv[])
 
             h_graph_mask[i] = false;
             h_updating_graph_mask[i] = false;
-            h_graph_visited[i] = false;   
+            h_graph_visited[i] = 0;   
         }
 
         //cudaInit();
@@ -411,9 +492,9 @@ int main(int argc, char *argv[])
             //---------------------------------------------------------
             //--cuda entry
             h_cost[i][source] = 0;
-            h_graph_mask[source] = true;
-            h_graph_visited[source] = true;
-            run_bfs_cuda(no_of_nodes, h_graph_nodes, edge_list_size, h_graph_edges, h_graph_mask, h_updating_graph_mask, h_graph_visited, h_cost[i]);
+            h_graph_frontier[0] = source;
+            h_graph_visited[source] = 1;
+            run_bfs_cuda(no_of_nodes, h_graph_nodes, h_graph_frontier, 1, edge_list_size, h_graph_edges, h_graph_visited, h_cost[i]);
         }
 
         //cudaRelease();
@@ -424,19 +505,21 @@ int main(int argc, char *argv[])
         // Initialize the memory again
 
         int *h_cost_ref = (int *)malloc(sizeof(int) * no_of_nodes);
+        int *h_ref_graph_visited = (int *)malloc(sizeof(int) * no_of_nodes);
 
         for (int i = 0; i < no_of_nodes; i++)
         {
             h_cost_ref[i] = -1;
             h_graph_mask[i] = false;
             h_updating_graph_mask[i] = false;
-            h_graph_visited[i] = false;
+            h_ref_graph_visited[i] = false;
         }
 
-#ifdef VERBOSE
-        printf("Running cpu...\n");
-#endif
-        // Set the source node as true in the mask4
+        #ifdef VERBOSE
+            printf("Running cpu...\n");
+        #endif
+        
+        // Set the source node as true in the mask
         h_cost_ref[source] = 0;
         h_graph_mask[source] = true;
         h_graph_visited[source] = true;
@@ -448,6 +531,7 @@ int main(int argc, char *argv[])
             free(h_cost[i]);
         }
         free(h_cost);
+        free(h_ref_graph_visited);
 #endif
     }
     catch (std::string msg)
