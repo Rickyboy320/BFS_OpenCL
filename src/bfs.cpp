@@ -1,4 +1,3 @@
-#define __CL_ENABLE_EXCEPTIONS
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -6,7 +5,15 @@
 #include <unordered_set>
 #include <sys/time.h>
 
-#include "CLHelper.h"
+#include <cuda_runtime.h>
+
+// Helper functions and utilities to work with CUDA
+#include <helper_functions.h>
+#include <helper_cuda.h>
+
+#include "kernels.cuh"
+
+// Helper
 #include "util.h"
 #include "matrixmarket/mmio.h"
 
@@ -14,6 +21,10 @@
 
 int iterations = 1;
 int source = 0;
+int deviceid = 0;
+int num_of_blocks = 0;
+int num_of_threads_per_block = 0;
+bool cpu = false;
 
 typedef unsigned long long timestamp_t;
 
@@ -21,14 +32,8 @@ static timestamp_t get_timestamp ()
 {
     struct timeval now;
     gettimeofday(&now, NULL);
-    return  now.tv_usec + (timestamp_t)now.tv_sec * 1000000;
+    return now.tv_usec + (timestamp_t)now.tv_sec * 1000000;
 }
-
-struct Node
-{
-    int starting;
-    int no_of_edges;
-};
 
 //----------------------------------------------------------
 //--Reference bfs on cpu
@@ -87,197 +92,155 @@ void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *
 #endif
 }
 //----------------------------------------------------------
-//--breadth first search on the OpenCL device
+//--breadth first search on the CUDA device
 //----------------------------------------------------------
-void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *h_graph_edges, char *h_graph_mask, char *h_updating_graph_mask, char *h_graph_visited, int *h_cost)
+void run_bfs_cuda(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *h_graph_edges, char *h_graph_mask, char *h_updating_graph_mask, char *h_graph_visited, int *h_cost)
 {
     char h_over = false;
-    cl_mem d_graph_nodes, d_graph_edges, d_graph_mask, d_updating_graph_mask, d_graph_visited, d_cost, d_over;
+
+    Node* d_graph_nodes;
+    int* d_graph_edges;
+    char* d_graph_mask;
+    char* d_updating_graph_mask;
+    char* d_graph_visited;
+    int* d_cost;
+    char* d_over;
 
 #ifdef PROFILING
-    cl_ulong kernel1_timer = 0;
-    cl_ulong kernel2_timer = 0;
-    cl_ulong h2d_timer = 0;
-    cl_ulong d2h_timer = 0;
+    float kernel_timer = 0;
+    float h2d_timer = 0;
+    float d2h_timer = 0;
+
+    cudaEvent_t start;
+    checkCudaErrors(cudaEventCreate(&start));
+
+    cudaEvent_t stop;
+    checkCudaErrors(cudaEventCreate(&stop));
 #endif
 
     try
     {
         //--1 transfer data from host to device
-        d_graph_nodes = _clMalloc(no_of_nodes * sizeof(Node), h_graph_nodes);
-        d_graph_edges = _clMalloc(edge_list_size * sizeof(int), h_graph_edges);
-        d_graph_mask = _clMallocRW(no_of_nodes * sizeof(char), h_graph_mask);
-        d_updating_graph_mask = _clMallocRW(no_of_nodes * sizeof(char), h_updating_graph_mask);
-        d_graph_visited = _clMallocRW(no_of_nodes * sizeof(char), h_graph_visited);
-
-        d_cost = _clMallocRW(no_of_nodes * sizeof(int), h_cost);
-        d_over = _clMallocRW(sizeof(char), &h_over);
-
-        cl_event h2dpreevents[6];
-        h2dpreevents[0] = _clMemcpyH2D(d_graph_nodes, no_of_nodes * sizeof(Node), h_graph_nodes);
-        h2dpreevents[1] = _clMemcpyH2D(d_graph_edges, edge_list_size * sizeof(int), h_graph_edges);
-        h2dpreevents[2] = _clMemcpyH2D(d_graph_mask, no_of_nodes * sizeof(char), h_graph_mask);
-        h2dpreevents[3] = _clMemcpyH2D(d_updating_graph_mask, no_of_nodes * sizeof(char), h_updating_graph_mask);
-        h2dpreevents[4] = _clMemcpyH2D(d_graph_visited, no_of_nodes * sizeof(char), h_graph_visited);
-        h2dpreevents[5] = _clMemcpyH2D(d_cost, no_of_nodes * sizeof(int), h_cost);
+        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_nodes), no_of_nodes * sizeof(Node)));
+        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_edges), edge_list_size * sizeof(int)));
+        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_mask), no_of_nodes * sizeof(char)));
+        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_updating_graph_mask), no_of_nodes * sizeof(char)));
+        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_visited), no_of_nodes * sizeof(char)));
+        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_cost), no_of_nodes * sizeof(int)));
+        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_over), sizeof(char)));
 
 #ifdef PROFILING
-        _clWait(6, h2dpreevents);
-        _clFinish();
-       
-        for(int i = 0; i < 6; i++) {
-            cl_ulong time_start;
-            cl_ulong time_end;
+        checkCudaErrors(cudaEventRecord(start, NULL));
+#endif
+        checkCudaErrors(cudaMemcpy(d_graph_nodes, h_graph_nodes, no_of_nodes * sizeof(Node), cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(d_graph_edges, h_graph_edges, edge_list_size * sizeof(int), cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(d_graph_mask, h_graph_mask, no_of_nodes * sizeof(char), cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(d_updating_graph_mask, h_updating_graph_mask, no_of_nodes * sizeof(char), cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(d_graph_visited, h_graph_visited, no_of_nodes * sizeof(char), cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(d_cost, h_cost, no_of_nodes * sizeof(int), cudaMemcpyHostToDevice));
 
-            clGetEventProfilingInfo(h2dpreevents[i], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
-            clGetEventProfilingInfo(h2dpreevents[i], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
-            h2d_timer += time_end - time_start;
-        }
+#ifdef PROFILING
+        checkCudaErrors(cudaEventRecord(stop, NULL));
+        checkCudaErrors(cudaEventSynchronize(stop));
+
+        float msecTotal = 0.0f;
+        checkCudaErrors(cudaEventElapsedTime(&msecTotal, start, stop));
+        h2d_timer += msecTotal;
 #endif
         //--2 invoke kernel
         int amtloops = 0;
 
-        cl_event h2devents[1];
-        cl_event kernelevents[2];
-        cl_event d2hevents[1];
+        dim3 grid(num_of_blocks, 1, 1);
+        dim3 threads(num_of_threads_per_block, 1, 1);
+
         do
         {
             amtloops++;
 
             h_over = false; 
-            
-            h2devents[0] = _clMemcpyH2D(d_over, sizeof(char), &h_over);
 
 #ifdef PROFILING
-            _clWait(1, h2devents);
-            _clFinish();
+            checkCudaErrors(cudaEventRecord(start, NULL));
+#endif        
 
-            for(int i = 0; i < 1; i++) {
-                cl_ulong time_start;
-                cl_ulong time_end;
+            checkCudaErrors(cudaMemcpy(d_over, &h_over, sizeof(char), cudaMemcpyHostToDevice));
 
-                clGetEventProfilingInfo(h2devents[i], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
-                clGetEventProfilingInfo(h2devents[i], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
+#ifdef PROFILING
+            checkCudaErrors(cudaEventRecord(stop, NULL));
+            checkCudaErrors(cudaEventSynchronize(stop));
 
-                h2d_timer += time_end - time_start;
-            }
+            msecTotal = 0.0f;
+            checkCudaErrors(cudaEventElapsedTime(&msecTotal, start, stop));
+            h2d_timer += msecTotal;
+
+            checkCudaErrors(cudaEventRecord(start, NULL));
 #endif
-            clReleaseEvent(h2devents[0]);
-
-
-            //--kernel 0
-            int kernel_id = 0;
-            int kernel_idx = 0;
-            _clSetArgs(kernel_id, kernel_idx++, d_graph_nodes);
-            _clSetArgs(kernel_id, kernel_idx++, d_graph_edges);
-            _clSetArgs(kernel_id, kernel_idx++, d_graph_mask);
-            _clSetArgs(kernel_id, kernel_idx++, d_updating_graph_mask);
-            _clSetArgs(kernel_id, kernel_idx++, d_graph_visited);
-            _clSetArgs(kernel_id, kernel_idx++, d_cost);
-            _clSetArgs(kernel_id, kernel_idx++, &no_of_nodes, sizeof(int));
-
             //int work_items = no_of_nodes;
-            kernelevents[0] = _clInvokeKernel(kernel_id, no_of_nodes, work_group_size);
+            run_Bfs1(grid, threads, d_graph_nodes, d_graph_edges, d_graph_mask, d_updating_graph_mask, d_graph_visited, d_cost, no_of_nodes);
+            run_Bfs2(grid, threads, d_graph_mask, d_updating_graph_mask, d_graph_visited, d_over, no_of_nodes);
 
-            //--kernel 1
-            kernel_id = 1;
-            kernel_idx = 0;
-            _clSetArgs(kernel_id, kernel_idx++, d_graph_mask);
-            _clSetArgs(kernel_id, kernel_idx++, d_updating_graph_mask);
-            _clSetArgs(kernel_id, kernel_idx++, d_graph_visited);
-            _clSetArgs(kernel_id, kernel_idx++, d_over);
-            _clSetArgs(kernel_id, kernel_idx++, &no_of_nodes, sizeof(int));
-
-            //work_items = no_of_nodes;
-            kernelevents[1] = _clInvokeKernel(kernel_id, no_of_nodes, work_group_size);
 #ifdef PROFILING
-            //Force waiting for kernel to finish.
-            _clWait(2, kernelevents);
-            _clFinish();
-            
-            cl_ulong time_start;
-            cl_ulong time_end;
+            checkCudaErrors(cudaEventRecord(stop, NULL));
+            checkCudaErrors(cudaEventSynchronize(stop));
 
-            clGetEventProfilingInfo(kernelevents[0], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
-            clGetEventProfilingInfo(kernelevents[0], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
+            msecTotal = 0.0f;
+            checkCudaErrors(cudaEventElapsedTime(&msecTotal, start, stop));
+            kernel_timer += msecTotal;
 
-            kernel1_timer += time_end-time_start;
-
-            clGetEventProfilingInfo(kernelevents[1], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
-            clGetEventProfilingInfo(kernelevents[1], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
-
-            kernel2_timer = time_end-time_start;
+            checkCudaErrors(cudaEventRecord(start, NULL));
 #endif
-            clReleaseEvent(kernelevents[0]);
-            clReleaseEvent(kernelevents[1]);
-
-            d2hevents[0] = _clMemcpyD2H(d_over, sizeof(char), &h_over);
+            checkCudaErrors(cudaMemcpy(&h_over, d_over, sizeof(char), cudaMemcpyDeviceToHost));
 
 #ifdef PROFILING
-            _clWait(1, d2hevents);
-            _clFinish();
+            checkCudaErrors(cudaEventRecord(stop, NULL));
+            checkCudaErrors(cudaEventSynchronize(stop));
 
-            for(int i = 0; i < 1; i++) {
-                cl_ulong time_start;
-                cl_ulong time_end;
-
-                clGetEventProfilingInfo(d2hevents[i], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
-                clGetEventProfilingInfo(d2hevents[i], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
-
-                d2h_timer += time_end - time_start;
-            }
-
-            clReleaseEvent(d2hevents[0]);
+            msecTotal = 0.0f;
+            checkCudaErrors(cudaEventElapsedTime(&msecTotal, start, stop));
+            d2h_timer += msecTotal;
 #endif
         } while (h_over);
-
 
 #ifdef VERBOSE
         printf("Took %d loops\n", amtloops);
 #endif
-        _clFinish();
-
-        //--3 transfer data from device to host
-        cl_event d2hevent[1];
-        d2hevent[0] = _clMemcpyD2H(d_cost, no_of_nodes * sizeof(int), h_cost);
 
 #ifdef PROFILING
-        _clWait(1, d2hevent);
-        _clFinish();
-
-        cl_ulong time_start;
-        cl_ulong time_end;
-
-        clGetEventProfilingInfo(d2hevent[0], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
-        clGetEventProfilingInfo(d2hevent[0], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
-
-        d2h_timer += time_end - time_start;
+        checkCudaErrors(cudaEventRecord(start, NULL));
 #endif
-        clReleaseEvent(d2hevent[0]);
+        checkCudaErrors(cudaMemcpy(h_cost, d_cost, no_of_nodes * sizeof(int), cudaMemcpyDeviceToHost));
+
+#ifdef PROFILING
+        checkCudaErrors(cudaEventRecord(stop, NULL));
+        checkCudaErrors(cudaEventSynchronize(stop));
+
+        msecTotal = 0.0f;
+        checkCudaErrors(cudaEventElapsedTime(&msecTotal, start, stop));
+        d2h_timer += msecTotal;
+#endif
     }
     catch (std::string msg)
     {
-        throw("in run_bfs_opencl -> " + msg);
+        throw("in run_bfs_cuda -> " + msg);
     }
 
-    //--4 release cl resources.
-    _clFree(d_graph_nodes);
-    _clFree(d_graph_edges);
-    _clFree(d_graph_mask);
-    _clFree(d_updating_graph_mask);
-    _clFree(d_graph_visited);
-    _clFree(d_cost);
-    _clFree(d_over);
+    //--4 release cuda resources.
+    checkCudaErrors(cudaFree(d_graph_nodes));
+    checkCudaErrors(cudaFree(d_graph_edges));
+    checkCudaErrors(cudaFree(d_graph_mask));
+    checkCudaErrors(cudaFree(d_updating_graph_mask));
+    checkCudaErrors(cudaFree(d_graph_visited));
+    checkCudaErrors(cudaFree(d_cost));
+    checkCudaErrors(cudaFree(d_over));
 
-#ifdef PROFILING
-    
+#ifdef PROFILING    
     #ifdef VERBOSE
-    printf("\tTotal h2d time is: %0.3f milliseconds \n", (h2d_timer) / 1000000.0);
-    printf("\tTotal kernel time is: %0.3f milliseconds \n", (kernel1_timer + kernel2_timer) / 1000000.0);
-    printf("\tTotal d2h time is: %0.3f milliseconds \n", (d2h_timer) / 1000000.0);
-    printf("\tTotal time: %0.3f milliseconds \n", (h2d_timer + kernel1_timer + kernel2_timer + d2h_timer) / 1000000.0);
+    printf("\tTotal h2d time is: %0.3f milliseconds \n", h2d_timer);
+    printf("\tTotal kernel time is: %0.3f milliseconds \n", kernel_timer);
+    printf("\tTotal d2h time is: %0.3f milliseconds \n", d2h_timer);
+    printf("\tTotal time: %0.3f milliseconds \n", (h2d_timer + kernel_timer + d2h_timer));
     #else
-    printf("%0.3f %0.3f %0.3f %0.3f\n", (h2d_timer) / 1000000.0, (kernel1_timer + kernel2_timer) / 1000000.0, (d2h_timer) / 1000000.0, (h2d_timer + kernel1_timer + kernel2_timer + d2h_timer) / 1000000.0);
+    printf("%0.3f %0.3f %0.3f %0.3f\n", (h2d_timer), (kernel_timer), (d2h_timer), (h2d_timer + kernel_timer + d2h_timer));
     #endif
 #endif
 
@@ -298,8 +261,6 @@ int main(int argc, char *argv[])
     char *h_updating_graph_mask;
     char *h_graph_visited;
     int *h_graph_edges;
-    int *I;
-    int *J;
     double *val;
 
     try
@@ -316,7 +277,9 @@ int main(int argc, char *argv[])
             exit(0);
         }
 
-        _clCmdParams(argc, argv, &source, &iterations);
+        //TODO
+        int work_group_size = 0;
+        cmdParams(argc, argv, &source, &iterations, &work_group_size, &deviceid, &cpu);
 
         //Read in Graph from a file
         char *input_f = argv[1];
@@ -402,7 +365,11 @@ int main(int argc, char *argv[])
         h_graph_edges = (int*) malloc(sizeof(int) * edge_list_size);
 
         // Distribute threads across multiple Blocks if necessary
-        work_group_size = no_of_nodes > MAX_THREADS_PER_BLOCK ? MAX_THREADS_PER_BLOCK : no_of_nodes;
+        if (no_of_nodes > MAX_THREADS_PER_BLOCK) {
+            num_of_blocks = (int)ceil(no_of_nodes / (double)MAX_THREADS_PER_BLOCK);
+            num_of_threads_per_block = MAX_THREADS_PER_BLOCK;
+        }
+
 
         // Allocate host memory
         h_graph_nodes = (Node *)malloc(sizeof(Node) * no_of_nodes);
@@ -424,7 +391,7 @@ int main(int argc, char *argv[])
             h_graph_visited[i] = false;   
         }
 
-        _clInit();
+        //cudaInit();
 
         // Allocate mem for the result on host side and run bfs
         int **h_cost;
@@ -438,18 +405,18 @@ int main(int argc, char *argv[])
             }
 
     #ifdef VERBOSE
-            printf("Running opencl...\n");
+            printf("Running cuda...\n");
     #endif
 
             //---------------------------------------------------------
-            //--opencl entry
+            //--cuda entry
             h_cost[i][source] = 0;
             h_graph_mask[source] = true;
             h_graph_visited[source] = true;
-            run_bfs_opencl(no_of_nodes, h_graph_nodes, edge_list_size, h_graph_edges, h_graph_mask, h_updating_graph_mask, h_graph_visited, h_cost[i]);
+            run_bfs_cuda(no_of_nodes, h_graph_nodes, edge_list_size, h_graph_edges, h_graph_mask, h_updating_graph_mask, h_graph_visited, h_cost[i]);
         }
 
-        _clRelease();
+        //cudaRelease();
 
 #ifndef NO_CHECK
         //---------------------------------------------------------
@@ -489,8 +456,6 @@ int main(int argc, char *argv[])
     }
 
     // Release host memory
-    free(I);
-    free(J);
     free(val);
     free(h_graph_nodes);
     

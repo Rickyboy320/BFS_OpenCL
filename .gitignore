@@ -1,4 +1,5 @@
 .vscode
+res/
 data/
 data_old/
 bfs

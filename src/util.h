@@ -42,10 +42,10 @@ void verify_array(const datatype *cpuResults, const datatype *clResults, const i
       }
     }
     if (passed){
-        std::cout << "--cambine:passed:-)" << endl;
+        std::cout << "--cambine:passed:-)" << std::endl;
     }
     else{
-        std::cout << "--cambine: failed:-(" << endl;
+        std::cout << "--cambine: failed:-(" << std::endl;
     }
     return ;
 }
@@ -61,12 +61,89 @@ void compare_results(const datatype *cpuResults, const datatype *clResults, cons
       }
     }
     if (passed){
-        std::cout << "--cambine:passed:-)" << endl;
+        std::cout << "--cambine:passed:-)" << std::endl;
     }
     else{
-        std::cout << "--cambine: failed:-(" << endl;
+        std::cout << "--cambine: failed:-(" << std::endl;
     }
     return ;
+}
+
+void cmdParams(int argc, char *argv[], int* source, int* iterations, int* work_group_size, int* device_id_inuse, bool* cpu)
+{
+    for (int i = 2; i < argc; i++)
+    {
+        if(argv[i][0] != '-') {
+            continue;
+        }
+
+        switch (argv[i][1])
+        {
+        case 'g': //--g stands for size of work group
+            if (++i < argc)
+            {
+                sscanf(argv[i], "%d", work_group_size);
+#ifdef VERBOSE
+                printf("Setting work group size to %d\n", *work_group_size);
+#endif
+            }
+            else
+            {
+                std::cerr << "Could not read argument after option " << argv[i - 1] << std::endl;
+                throw;
+            }
+            break;
+        case 'd': //--d stands for device id used in computaion
+            if (++i < argc)
+            {
+                sscanf(argv[i], "%d", device_id_inuse);
+#ifdef VERBOSE
+                printf("Setting device id to %d\n", *device_id_inuse);
+#endif
+            }
+            else
+            {
+                std::cerr << "Could not read argument after option " << argv[i - 1] << std::endl;
+                throw;
+            }
+            break;
+        case 'c':
+            *cpu = true;
+#ifdef VERBOSE
+            printf("Attempting to use CPU instead of GPU.\n");
+#endif
+            break;
+        case 's':
+             if (++i < argc)
+            {
+                sscanf(argv[i], "%d", source);
+#ifdef VERBOSE
+                printf("Setting source to %d\n", *source);
+#endif
+            }
+            else
+            {
+                std::cerr << "Could not read argument after option " << argv[i - 1] << std::endl;
+                throw;
+            }
+            break;
+        case 'i':
+             if (++i < argc)
+            {
+                sscanf(argv[i], "%d", iterations);
+#ifdef VERBOSE
+                printf("Setting iterations to %d\n", *iterations);
+#endif
+            }
+            else
+            {
+                std::cerr << "Could not read argument after option " << argv[i - 1] << std::endl;
+                throw;
+            }
+            break;
+        default:;
+        }
+    }
 }
 
 #endif

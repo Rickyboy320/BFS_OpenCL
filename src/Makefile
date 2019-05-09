@@ -1,37 +1,23 @@
-CC = g++
-
-SRC = bfs.cpp matrixmarket/mmio.c
-
-CC_FLAGS = -g -O3
+SRC = matrixmarket/mmio.cpp bfs.cpp kernels.cu
 
 EXE = ../bin/bfs
 
-release:$(SRC)
-	$(CC) $(CC_FLAGS) $(SRC) -o $(EXE) -lOpenCL 
+CUDA_PATH ?= /usr/local/cuda
+HOST_COMPILER ?= g++
+CC          := $(CUDA_PATH)/bin/nvcc -ccbin $(HOST_COMPILER)
 
-errmsg:$(SRC)
-	$(CC) $(CC_FLAGS) $(SRC) -o $(EXE) -lOpenCL -D ERRMSG
+CC_FLAGS    = -g -O3
 
-ptx:$(SRC)
-	$(CC) $(CC_FLAGS) $(SRC) -o $(EXE) -lOpenCL -D PTX_MSG
+INCLUDES  := -I../inc -I./matrixmarket
 
-profile:$(SRC)
-	$(CC) $(CC_FLAGS) $(SRC) -o $(EXE) -lOpenCL -D PROFILING
-
-res:$(SRC)
-	$(CC) $(CC_FLAGS) $(SRC) -o $(EXE) -lOpenCL -D RES_MSG
+profile: $(SRC)
+	$(CC) $(INCLUDES) $(CC_FLAGS) $(SRC) -o $(EXE) -D PROFILING
 
 debug: $(SRC)
-	$(CC) $(CC_FLAGS) $(SRC) -o $(EXE) -lOpenCL -D ERRMSG -D PTX_MSG -D RES_MSG -D PROFILING -D VERBOSE
+	$(CC) $(INCLUDES) $(CC_FLAGS) $(SRC) -o $(EXE) -D ERRMSG -D PTX_MSG -D RES_MSG -D PROFILING -D VERBOSE
 
 results: $(SRC)
-	$(CC) $(CC_FLAGS) $(SRC) -o $(EXE) -lOpenCL -D NO_CHECK -D PROFILING
-
-run-gpu: debug
-	./$(EXE) ../data/road_usa.mtx
-
-run-cpu: debug
-	./$(EXE) ../data/road_usa.mtx -c
+	$(CC) $(INCLUDES) $(CC_FLAGS) $(SRC) -o $(EXE) -D NO_CHECK -D PROFILING
 
 clean: $(SRC)
 	rm -f $(EXE) $(EXE).linkinfo result*
