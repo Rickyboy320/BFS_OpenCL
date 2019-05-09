@@ -22,8 +22,8 @@
 int iterations = 1;
 int source = 0;
 int deviceid = 0;
-int num_of_blocks = 0;
-int num_of_threads_per_block = 0;
+int num_of_blocks = 1;
+int num_of_threads_per_block = MAX_THREADS_PER_BLOCK;
 bool cpu = false;
 
 typedef unsigned long long timestamp_t;
