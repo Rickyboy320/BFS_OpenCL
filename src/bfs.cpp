@@ -424,7 +424,7 @@ int main(int argc, char *argv[])
 
         //cudaRelease();
 
-#ifndef NO_checkErrors
+#ifndef NO_CHECK
         //---------------------------------------------------------
         //--cpu entry
         // Initialize the memory again
