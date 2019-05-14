@@ -456,6 +456,9 @@ int main(int argc, char *argv[])
             num_of_threads_per_block = MAX_THREADS_PER_BLOCK;
         }
 
+#ifdef VERBOSE
+        printf("Using %d blocks and %d threads per block: total: %d\n", num_of_blocks, num_of_threads_per_block, num_of_blocks * num_of_threads_per_block);
+#endif
 
         // Allocate host memory
         h_graph_nodes = (Node *)malloc(sizeof(Node) * no_of_nodes);
