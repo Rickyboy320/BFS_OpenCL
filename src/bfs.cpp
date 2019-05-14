@@ -19,6 +19,12 @@
 
 #define MAX_THREADS_PER_BLOCK 256
 
+#ifdef ERRMSG
+    #define checkErrors checkCudaErrors
+#else
+    #define checkErrors 
+#endif  
+
 int iterations = 1;
 int source = 0;
 int deviceid = 0;
@@ -112,39 +118,39 @@ void run_bfs_cuda(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int 
     float d2h_timer = 0;
 
     cudaEvent_t start;
-    checkCudaErrors(cudaEventCreate(&start));
+    checkErrors(cudaEventCreate(&start));
 
     cudaEvent_t stop;
-    checkCudaErrors(cudaEventCreate(&stop));
+    checkErrors(cudaEventCreate(&stop));
 #endif
 
     try
     {
         //--1 transfer data from host to device
-        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_nodes), no_of_nodes * sizeof(Node)));
-        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_edges), edge_list_size * sizeof(int)));
-        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_mask), no_of_nodes * sizeof(char)));
-        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_updating_graph_mask), no_of_nodes * sizeof(char)));
-        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_visited), no_of_nodes * sizeof(char)));
-        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_cost), no_of_nodes * sizeof(int)));
-        checkCudaErrors(cudaMalloc(reinterpret_cast<void **>(&d_over), sizeof(char)));
+        checkErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_nodes), no_of_nodes * sizeof(Node)));
+        checkErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_edges), edge_list_size * sizeof(int)));
+        checkErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_mask), no_of_nodes * sizeof(char)));
+        checkErrors(cudaMalloc(reinterpret_cast<void **>(&d_updating_graph_mask), no_of_nodes * sizeof(char)));
+        checkErrors(cudaMalloc(reinterpret_cast<void **>(&d_graph_visited), no_of_nodes * sizeof(char)));
+        checkErrors(cudaMalloc(reinterpret_cast<void **>(&d_cost), no_of_nodes * sizeof(int)));
+        checkErrors(cudaMalloc(reinterpret_cast<void **>(&d_over), sizeof(char)));
 
 #ifdef PROFILING
-        checkCudaErrors(cudaEventRecord(start, NULL));
+        checkErrors(cudaEventRecord(start, NULL));
 #endif
-        checkCudaErrors(cudaMemcpy(d_graph_nodes, h_graph_nodes, no_of_nodes * sizeof(Node), cudaMemcpyHostToDevice));
-        checkCudaErrors(cudaMemcpy(d_graph_edges, h_graph_edges, edge_list_size * sizeof(int), cudaMemcpyHostToDevice));
-        checkCudaErrors(cudaMemcpy(d_graph_mask, h_graph_mask, no_of_nodes * sizeof(char), cudaMemcpyHostToDevice));
-        checkCudaErrors(cudaMemcpy(d_updating_graph_mask, h_updating_graph_mask, no_of_nodes * sizeof(char), cudaMemcpyHostToDevice));
-        checkCudaErrors(cudaMemcpy(d_graph_visited, h_graph_visited, no_of_nodes * sizeof(char), cudaMemcpyHostToDevice));
-        checkCudaErrors(cudaMemcpy(d_cost, h_cost, no_of_nodes * sizeof(int), cudaMemcpyHostToDevice));
+        checkErrors(cudaMemcpy(d_graph_nodes, h_graph_nodes, no_of_nodes * sizeof(Node), cudaMemcpyHostToDevice));
+        checkErrors(cudaMemcpy(d_graph_edges, h_graph_edges, edge_list_size * sizeof(int), cudaMemcpyHostToDevice));
+        checkErrors(cudaMemcpy(d_graph_mask, h_graph_mask, no_of_nodes * sizeof(char), cudaMemcpyHostToDevice));
+        checkErrors(cudaMemcpy(d_updating_graph_mask, h_updating_graph_mask, no_of_nodes * sizeof(char), cudaMemcpyHostToDevice));
+        checkErrors(cudaMemcpy(d_graph_visited, h_graph_visited, no_of_nodes * sizeof(char), cudaMemcpyHostToDevice));
+        checkErrors(cudaMemcpy(d_cost, h_cost, no_of_nodes * sizeof(int), cudaMemcpyHostToDevice));
 
 #ifdef PROFILING
-        checkCudaErrors(cudaEventRecord(stop, NULL));
-        checkCudaErrors(cudaEventSynchronize(stop));
+        checkErrors(cudaEventRecord(stop, NULL));
+        checkErrors(cudaEventSynchronize(stop));
 
         float msecTotal = 0.0f;
-        checkCudaErrors(cudaEventElapsedTime(&msecTotal, start, stop));
+        checkErrors(cudaEventElapsedTime(&msecTotal, start, stop));
         h2d_timer += msecTotal;
 #endif
         //--2 invoke kernel
@@ -160,43 +166,43 @@ void run_bfs_cuda(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int 
             h_over = false; 
 
 #ifdef PROFILING
-            checkCudaErrors(cudaEventRecord(start, NULL));
+            checkErrors(cudaEventRecord(start, NULL));
 #endif        
 
-            checkCudaErrors(cudaMemcpy(d_over, &h_over, sizeof(char), cudaMemcpyHostToDevice));
+            checkErrors(cudaMemcpy(d_over, &h_over, sizeof(char), cudaMemcpyHostToDevice));
 
 #ifdef PROFILING
-            checkCudaErrors(cudaEventRecord(stop, NULL));
-            checkCudaErrors(cudaEventSynchronize(stop));
+            checkErrors(cudaEventRecord(stop, NULL));
+            checkErrors(cudaEventSynchronize(stop));
 
             msecTotal = 0.0f;
-            checkCudaErrors(cudaEventElapsedTime(&msecTotal, start, stop));
+            checkErrors(cudaEventElapsedTime(&msecTotal, start, stop));
             h2d_timer += msecTotal;
 
-            checkCudaErrors(cudaEventRecord(start, NULL));
+            checkErrors(cudaEventRecord(start, NULL));
 #endif
             //int work_items = no_of_nodes;
             run_Bfs1(grid, threads, d_graph_nodes, d_graph_edges, d_graph_mask, d_updating_graph_mask, d_graph_visited, d_cost, no_of_nodes);
             run_Bfs2(grid, threads, d_graph_mask, d_updating_graph_mask, d_graph_visited, d_over, no_of_nodes);
 
 #ifdef PROFILING
-            checkCudaErrors(cudaEventRecord(stop, NULL));
-            checkCudaErrors(cudaEventSynchronize(stop));
+            checkErrors(cudaEventRecord(stop, NULL));
+            checkErrors(cudaEventSynchronize(stop));
 
             msecTotal = 0.0f;
-            checkCudaErrors(cudaEventElapsedTime(&msecTotal, start, stop));
+            checkErrors(cudaEventElapsedTime(&msecTotal, start, stop));
             kernel_timer += msecTotal;
 
-            checkCudaErrors(cudaEventRecord(start, NULL));
+            checkErrors(cudaEventRecord(start, NULL));
 #endif
-            checkCudaErrors(cudaMemcpy(&h_over, d_over, sizeof(char), cudaMemcpyDeviceToHost));
+            checkErrors(cudaMemcpy(&h_over, d_over, sizeof(char), cudaMemcpyDeviceToHost));
 
 #ifdef PROFILING
-            checkCudaErrors(cudaEventRecord(stop, NULL));
-            checkCudaErrors(cudaEventSynchronize(stop));
+            checkErrors(cudaEventRecord(stop, NULL));
+            checkErrors(cudaEventSynchronize(stop));
 
             msecTotal = 0.0f;
-            checkCudaErrors(cudaEventElapsedTime(&msecTotal, start, stop));
+            checkErrors(cudaEventElapsedTime(&msecTotal, start, stop));
             d2h_timer += msecTotal;
 #endif
         } while (h_over);
@@ -206,16 +212,16 @@ void run_bfs_cuda(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int 
 #endif
 
 #ifdef PROFILING
-        checkCudaErrors(cudaEventRecord(start, NULL));
+        checkErrors(cudaEventRecord(start, NULL));
 #endif
-        checkCudaErrors(cudaMemcpy(h_cost, d_cost, no_of_nodes * sizeof(int), cudaMemcpyDeviceToHost));
+        checkErrors(cudaMemcpy(h_cost, d_cost, no_of_nodes * sizeof(int), cudaMemcpyDeviceToHost));
 
 #ifdef PROFILING
-        checkCudaErrors(cudaEventRecord(stop, NULL));
-        checkCudaErrors(cudaEventSynchronize(stop));
+        checkErrors(cudaEventRecord(stop, NULL));
+        checkErrors(cudaEventSynchronize(stop));
 
         msecTotal = 0.0f;
-        checkCudaErrors(cudaEventElapsedTime(&msecTotal, start, stop));
+        checkErrors(cudaEventElapsedTime(&msecTotal, start, stop));
         d2h_timer += msecTotal;
 #endif
     }
@@ -225,13 +231,13 @@ void run_bfs_cuda(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int 
     }
 
     //--4 release cuda resources.
-    checkCudaErrors(cudaFree(d_graph_nodes));
-    checkCudaErrors(cudaFree(d_graph_edges));
-    checkCudaErrors(cudaFree(d_graph_mask));
-    checkCudaErrors(cudaFree(d_updating_graph_mask));
-    checkCudaErrors(cudaFree(d_graph_visited));
-    checkCudaErrors(cudaFree(d_cost));
-    checkCudaErrors(cudaFree(d_over));
+    checkErrors(cudaFree(d_graph_nodes));
+    checkErrors(cudaFree(d_graph_edges));
+    checkErrors(cudaFree(d_graph_mask));
+    checkErrors(cudaFree(d_updating_graph_mask));
+    checkErrors(cudaFree(d_graph_visited));
+    checkErrors(cudaFree(d_cost));
+    checkErrors(cudaFree(d_over));
 
 #ifdef PROFILING    
     #ifdef VERBOSE
@@ -418,7 +424,7 @@ int main(int argc, char *argv[])
 
         //cudaRelease();
 
-#ifndef NO_CHECK
+#ifndef NO_checkErrors
         //---------------------------------------------------------
         //--cpu entry
         // Initialize the memory again
