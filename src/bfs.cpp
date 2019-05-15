@@ -108,10 +108,10 @@ void run_bfs_opencl(int no_of_nodes, Node *h_graph_nodes, int* h_new_graph_front
     {
 
         //--1 transfer data from host to device
-        d_graph_nodes = _clMalloc(no_of_nodes * sizeof(Node), h_graph_nodes);
+        d_graph_nodes = _clMallocRW(no_of_nodes * sizeof(Node), h_graph_nodes);
         d_graph_frontier = _clMallocRW(no_of_nodes * sizeof(int), h_graph_frontier);
         d_graph_frontier_size = _clMallocRW(sizeof(int), &h_graph_frontier_size);
-        d_graph_edges = _clMalloc(edge_list_size * sizeof(int), h_graph_edges);
+        d_graph_edges = _clMallocRW(edge_list_size * sizeof(int), h_graph_edges);
         d_new_frontier = _clMallocRW(no_of_nodes * sizeof(int), h_new_graph_frontier);
         d_new_frontier_size = _clMallocRW(sizeof(int), &h_new_frontier_size);
         d_graph_visited = _clMallocRW(no_of_nodes * sizeof(int), h_graph_visited);
