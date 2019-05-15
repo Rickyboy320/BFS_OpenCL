@@ -508,6 +508,10 @@ int main(int argc, char *argv[])
         // Distribute threads across multiple Blocks if necessary
         work_group_size = no_of_nodes > MAX_THREADS_PER_BLOCK ? MAX_THREADS_PER_BLOCK : no_of_nodes;
 
+#ifdef VERBOSE
+        printf("Using work group size of: %lu for %d items\n", work_group_size, no_of_nodes);
+#endif
+
         // Allocate host memory
         h_graph_nodes = (Node *)malloc(sizeof(Node) * no_of_nodes);
         h_graph_mask = (char *)malloc(sizeof(char) * no_of_nodes);
