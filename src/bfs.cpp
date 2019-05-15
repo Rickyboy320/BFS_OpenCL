@@ -126,35 +126,33 @@ void run_bfs_opencl(int no_of_nodes,
     try
     {
         //--1 transfer data from host to device
-        d_graph_nodes = _clCreateAndCpyMem(no_of_nodes * sizeof(Node), h_graph_nodes);
-        d_graph_edges = _clCreateAndCpyMem(edge_list_size * sizeof(int), h_graph_edges);
+        d_graph_nodes = _clMallocRW(no_of_nodes * sizeof(Node), h_graph_nodes); // copyAndAlloc
+        d_graph_edges = _clMallocRW(edge_list_size * sizeof(int), h_graph_edges); //allocAndCopy
         
         d_new_frontier = _clMallocRW(no_of_nodes * sizeof(int), h_new_graph_frontier);
-        d_graph_frontier = _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS, no_of_nodes * sizeof(int), NULL);
-        d_graph_frontier_size = _clCreateBuffer(CL_MEM_READ_WRITE, sizeof(int), NULL);
+        d_graph_frontier = _clCreateBuffer(CL_MEM_READ_WRITE, no_of_nodes * sizeof(int), NULL); // CL_MEM_READ_WRITE | CL_MEM_HOST_NO_ACCESS
+        d_graph_frontier_size = _clCreateBuffer(CL_MEM_READ_WRITE, sizeof(int), NULL); // CL_MEM_READ_WRITE
         d_new_frontier_size = _clMallocRW(sizeof(int), &h_new_frontier_size);
         
         d_graph_visited = _clMallocRW(no_of_nodes * sizeof(int), h_graph_visited);
-
-        d_graph_mask = _clCreateBuffer(CL_MEM_HOST_NO_ACCESS, no_of_nodes * sizeof(int), NULL);
-        d_new_mask = _clCreateBuffer(CL_MEM_HOST_NO_ACCESS, no_of_nodes * sizeof(int), NULL);
-    
-        d_amount_frontier_edges = _clCreateBuffer(CL_MEM_READ_WRITE, sizeof(int), NULL);
-
+        d_graph_mask = _clCreateBuffer(CL_MEM_READ_WRITE, no_of_nodes * sizeof(int), NULL); //CL_MEM_HOST_NO_ACCESS
+        d_new_mask = _clCreateBuffer(CL_MEM_READ_WRITE, no_of_nodes * sizeof(int), NULL);
+        d_amount_frontier_edges = _clCreateBuffer(CL_MEM_READ_WRITE, sizeof(int), NULL); // CL_MEM_READ_WRITE
         d_cost = _clMallocRW(no_of_nodes * sizeof(int), h_cost);
 
-        cl_event h2dpreevents[5];
+        cl_event h2dpreevents[6];
         h2dpreevents[0] = _clMemcpyH2D(d_graph_nodes, no_of_nodes * sizeof(Node), h_graph_nodes);
-        h2dpreevents[1] = _clMemcpyH2D(d_new_frontier, no_of_nodes * sizeof(int), h_new_graph_frontier);
-        h2dpreevents[2] = _clMemcpyH2D(d_new_frontier_size, sizeof(int), &h_new_frontier_size);
-        h2dpreevents[3] = _clMemcpyH2D(d_graph_visited, no_of_nodes * sizeof(int), h_graph_visited);
-        h2dpreevents[4] = _clMemcpyH2D(d_cost, no_of_nodes * sizeof(int), h_cost);
+        h2dpreevents[1] = _clMemcpyH2D(d_graph_edges, edge_list_size * sizeof(int), h_graph_edges);
+        h2dpreevents[2] = _clMemcpyH2D(d_new_frontier, no_of_nodes * sizeof(int), h_new_graph_frontier);
+        h2dpreevents[3] = _clMemcpyH2D(d_new_frontier_size, sizeof(int), &h_new_frontier_size);
+        h2dpreevents[4] = _clMemcpyH2D(d_graph_visited, no_of_nodes * sizeof(int), h_graph_visited);
+        h2dpreevents[5] = _clMemcpyH2D(d_cost, no_of_nodes * sizeof(int), h_cost);
         
 #ifdef PROFILING
-        _clWait(5, h2dpreevents);
+        _clWait(6, h2dpreevents);
         _clFinish();
        
-        for(int i = 0; i < 5; i++) {
+        for(int i = 0; i < 6; i++) {
             cl_ulong time_start;
             cl_ulong time_end;
 
