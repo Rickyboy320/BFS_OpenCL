@@ -563,9 +563,9 @@ cl_mem _clCreateAndCpyMem(int size, void *h_mem_source)
 //-------------------------------------------------------
 //--cambine:	create read only  buffer for devices
 //--date:	17/01/2011
-cl_mem _clMallocRW(int size, void *h_mem_ptr)
+cl_mem _clMallocRW(int size)
 {
-    return _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_COPY_HOST_PTR, size, h_mem_ptr);
+    return _clCreateBuffer(CL_MEM_READ_WRITE, size, NULL);
 }
 //-------------------------------------------------------
 //--cambine:	create read and write buffer for devices

@@ -1,15 +1,10 @@
-/* ============================================================
-//--cambine: kernel funtion of Breadth-First-Search
-//--author:	created by Jianbin Fang
-//--date:	06/12/2010
-============================================================ */
 #pragma OPENCL EXTENSION cl_khr_byte_addressable_store: enable
-//Structure to hold a node information
+
 typedef struct{
     int starting;
     int no_of_edges;
 } Node;
-//--7 parameters
+
 __kernel void BFS_TD(const __global Node* g_graph_nodes,
                     const __global int* g_graph_edges,
                     __global char* g_graph_mask, 
@@ -33,7 +28,6 @@ __kernel void BFS_TD(const __global Node* g_graph_nodes,
     }	
 }
 
-//--7 parameters
 __kernel void BFS_BU(const __global Node* g_graph_nodes,
                     const __global int* g_graph_edges,
                     __global char* g_graph_mask, 
@@ -55,12 +49,12 @@ __kernel void BFS_BU(const __global Node* g_graph_nodes,
                 // Increment cost based on parent, and set this as to-be-updated.
                 g_cost[tid] = g_cost[id] + 1;
                 g_updating_graph_mask[tid] = true;
+                break;
             }
         }
     }	
 }
 
-//--7 parameters
 /**
  * Update the graph. All nodes that have been visited are now marked as such.
  */
@@ -68,7 +62,6 @@ __kernel void BFS_UPDATE(const __global Node* g_graph_nodes,
                         __global char* g_graph_mask, 
                         __global char* g_updating_graph_mask, 
                         __global char* g_graph_visited, 
-                        __global char* g_over,
                         const int no_of_nodes,
                         __global int* frontier_vertices,
                         __global int* frontier_edges) {
@@ -77,7 +70,6 @@ __kernel void BFS_UPDATE(const __global Node* g_graph_nodes,
     {
         g_graph_mask[tid]=true;
         g_graph_visited[tid]=true;
-        *g_over=true;
         g_updating_graph_mask[tid]=false;
 
         atomic_add(frontier_edges, g_graph_nodes[tid].no_of_edges);
@@ -86,6 +78,3 @@ __kernel void BFS_UPDATE(const __global Node* g_graph_nodes,
 
     //TODO: potential optimization: no longer compute frontier_edges and frontier_vertices  after BU has been initiated.
 }
-
-
- 
