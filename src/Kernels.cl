@@ -25,10 +25,9 @@ __kernel void BFS_1( const __global Node* g_nodes,
             if(atomic_xchg(&g_visited[id], 1) == 0)
             {
                 int old = atomic_inc(g_new_frontier_size);
-                g_cost[id] = g_cost[nodeId] + 1;
-
                 g_new_frontier[old] = id;
-                g_visited[id] = true;
+
+                g_cost[id] = g_cost[nodeId] + 1;
             }
         }
     }	
