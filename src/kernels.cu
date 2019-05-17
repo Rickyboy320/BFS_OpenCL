@@ -26,8 +26,8 @@ __global__ void BFS_TD(const Node* g_graph_nodes,
                 g_new_frontier[old] = id;
                 g_graph_visited[id] = true;
 
-                Node node = g_graph_nodes[id];
-                atomicAdd(g_amount_frontier_edges, node.no_of_edges); 
+                Node target = g_graph_nodes[id];
+                atomicAdd(g_amount_frontier_edges, target.no_of_edges); 
             }
         }
     }	

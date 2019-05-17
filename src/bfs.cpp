@@ -224,9 +224,8 @@ void run_bfs_cuda(int no_of_nodes,
 
             bool shrinking = h_new_frontier_size < old_frontier_vertices;
 
-            if (!has_bottom_upped && top_down && frontier_edges > unexplored_edges / ALPHA && !shrinking) {
+            if (top_down && frontier_edges > unexplored_edges / ALPHA && !shrinking) {
                 top_down = false;
-                has_bottom_upped = true;
 #ifdef VERBOSE
                 printf("Switching to BU\n");
 #endif
@@ -238,6 +237,8 @@ void run_bfs_cuda(int no_of_nodes,
 #ifdef VERBOSE
                 printf("Switching to TD\n");
 #endif
+                int zero = 0;
+                checkErrors(cudaMemcpy(d_graph_frontier_size, &zero, sizeof(int), cudaMemcpyHostToDevice));
                 run_convert_BU(grid, threads, d_graph_mask, d_graph_frontier, d_graph_frontier_size, no_of_nodes);
             }
 
