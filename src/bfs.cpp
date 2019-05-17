@@ -87,6 +87,41 @@ void run_bfs_cpu(int no_of_nodes, Node *h_graph_nodes, int edge_list_size, int *
     std::cout << "\treference time (sequential)(s):" << secs << std::endl;
 #endif
 }
+
+void waitAndTime(int count, cl_event* events, string* strings, cl_ulong* timer)
+{
+    _clWait(count, events);
+    _clFinish();
+       
+    for(int i = 0; i < count; i++) {
+        cl_ulong time_start;
+        cl_ulong time_end;
+
+        clGetEventProfilingInfo(events[i], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
+        clGetEventProfilingInfo(events[i], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
+        *timer += time_end - time_start;
+            
+#ifdef VERBOSE
+        printf("%s took %0.8f\n", strings[i].c_str(), (time_end - time_start) / 1000000.0);
+#endif
+    }
+}
+
+void waitAndTime(int count, cl_event* events, cl_ulong* timer)
+{
+    _clWait(count, events);
+    _clFinish();
+       
+    for(int i = 0; i < count; i++) {
+        cl_ulong time_start;
+        cl_ulong time_end;
+
+        clGetEventProfilingInfo(events[i], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
+        clGetEventProfilingInfo(events[i], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
+        *timer += time_end - time_start;
+    }
+}
+
 //----------------------------------------------------------
 //--breadth first search on the OpenCL device
 //----------------------------------------------------------
@@ -103,7 +138,6 @@ void run_bfs_opencl(int no_of_nodes,
     unsigned int old_frontier_vertices = 1;
     unsigned int frontier_edges = h_graph_nodes[source].no_of_edges;
     unsigned int unexplored_edges = edge_list_size;
-    bool has_bottom_upped = false;
 
     cl_mem d_graph_nodes;
     cl_mem d_graph_frontier;
@@ -149,17 +183,7 @@ void run_bfs_opencl(int no_of_nodes,
         h2dpreevents[5] = _clMemcpyH2D(d_cost, no_of_nodes * sizeof(int), h_cost);
         
 #ifdef PROFILING
-        _clWait(6, h2dpreevents);
-        _clFinish();
-       
-        for(int i = 0; i < 6; i++) {
-            cl_ulong time_start;
-            cl_ulong time_end;
-
-            clGetEventProfilingInfo(h2dpreevents[i], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
-            clGetEventProfilingInfo(h2dpreevents[i], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
-            h2d_timer += time_end - time_start;
-        }
+        waitAndTime(6, h2dpreevents, &h2d_timer);
 #endif
         //--2 invoke kernel
         bool top_down = true;
@@ -167,6 +191,8 @@ void run_bfs_opencl(int no_of_nodes,
         cl_event h2devents[2];
         cl_event kernelevents[5];
         string kernelstrings[5];
+        cl_event h2dkernel[1];
+        string h2dkernelstring[1];
         cl_event d2hevents[2];
         do
         {
@@ -191,19 +217,7 @@ void run_bfs_opencl(int no_of_nodes,
             h2devents[1] = _clMemcpyH2D(d_amount_frontier_edges, sizeof(int), &zero2);
 
 #ifdef PROFILING
-            _clWait(2, h2devents);
-
-            _clFinish();
-
-            for(int i = 0; i < 2; i++) {
-                cl_ulong time_start;
-                cl_ulong time_end;
-
-                clGetEventProfilingInfo(h2devents[i], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
-                clGetEventProfilingInfo(h2devents[i], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
-
-                h2d_timer += time_end - time_start;
-            }
+            waitAndTime(2, h2devents, &h2d_timer);
 #endif
             clReleaseEvent(h2devents[0]);
             clReleaseEvent(h2devents[1]);
@@ -211,9 +225,8 @@ void run_bfs_opencl(int no_of_nodes,
             bool shrinking = h_new_frontier_size < old_frontier_vertices;
             int eventindex = 0;
 
-            if (!has_bottom_upped && top_down && frontier_edges > unexplored_edges / ALPHA && !shrinking) {
+            if (top_down && frontier_edges > unexplored_edges / ALPHA && !shrinking) {
                 top_down = false;
-                has_bottom_upped = true;
 #ifdef VERBOSE
                 printf("Switching to BU\n");
 #endif
@@ -228,19 +241,25 @@ void run_bfs_opencl(int no_of_nodes,
                 _clSetArgs(3, kernel_idx++, d_graph_frontier_size);
                 _clSetArgs(3, kernel_idx++, d_graph_mask);
                 kernelstrings[eventindex] = "Conversion to BU";
-                kernelevents[eventindex++] = _clInvokeKernel(3, no_of_nodes, work_group_size);
+                kernelevents[eventindex++] = _clInvokeKernel(3, h_new_frontier_size, work_group_size);
 
             } else if(!top_down && h_new_frontier_size < no_of_nodes / BETA && shrinking) {
                 top_down = true;
 #ifdef VERBOSE
                 printf("Switching to TD\n");
 #endif
+                int zero = 0;
+                h2dkernel[0] = _clMemcpyH2D(d_graph_frontier_size, sizeof(int), &zero);
+                h2dkernelstring[0] = "Zero-ing frontier size for conversion to TD.";
+#ifdef PROFILING
+                waitAndTime(1, h2dkernel, &h2d_timer);
+#endif
                 int kernel_idx = 0;
                 _clSetArgs(2, kernel_idx++, d_graph_mask);
                 _clSetArgs(2, kernel_idx++, d_graph_frontier);
                 _clSetArgs(2, kernel_idx++, d_graph_frontier_size);
                 _clSetArgs(2, kernel_idx++, &no_of_nodes, sizeof(int));
-                kernelstrings[eventindex] = "Zero for conversion to TD";
+                kernelstrings[eventindex] = "Conversion to TD";
                 kernelevents[eventindex++] = _clInvokeKernel(2, no_of_nodes, work_group_size);
             }
 
@@ -260,8 +279,8 @@ void run_bfs_opencl(int no_of_nodes,
                 _clSetArgs(0, kernel_idx++, d_cost);
                 _clSetArgs(0, kernel_idx++, &no_of_nodes, sizeof(int));
 
-                kernelstrings[eventindex] = "TD cycle";
-                kernelevents[eventindex++] = _clInvokeKernel(0, no_of_nodes, work_group_size);
+                kernelstrings[eventindex] = "TD cycle w/ size: " + std::to_string(h_new_frontier_size);
+                kernelevents[eventindex++] = _clInvokeKernel(0, h_new_frontier_size, work_group_size);
             } else {
                 // Reset new bitmap
                 _clSetArgs(4, 0, d_new_mask);
@@ -279,50 +298,18 @@ void run_bfs_opencl(int no_of_nodes,
                 _clSetArgs(1, kernel_idx++, d_new_frontier_size);
                 _clSetArgs(1, kernel_idx++, d_amount_frontier_edges);
                 _clSetArgs(1, kernel_idx++, &no_of_nodes, sizeof(int));
-                kernelstrings[eventindex] = "BU cycle";
+                kernelstrings[eventindex] = "BU cycle w/ size: " + std::to_string(h_new_frontier_size);
                 kernelevents[eventindex++] = _clInvokeKernel(1, no_of_nodes, work_group_size);
             }            
-            //int work_items = no_of_nodes;
-            // TODO: no_of_nodes should be frontier size;
 #ifdef PROFILING
-            //Force waiting for kernels to finish.
-            _clWait(eventindex, kernelevents);
-            _clFinish();
-
-            for(int i = 0; i < eventindex; i++) {            
-                cl_ulong time_start;
-                cl_ulong time_end;
-
-                clGetEventProfilingInfo(kernelevents[i], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
-                clGetEventProfilingInfo(kernelevents[i], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
-
-                kernel_timer += time_end-time_start;
-
-                #ifdef VERBOSE
-                printf("%s took %0.8f\n", kernelstrings[i].c_str(), (time_end - time_start) / 1000000.0);
-                #endif
-            }
-
+            waitAndTime(eventindex, kernelevents, kernelstrings, &kernel_timer);
 #endif
-            clReleaseEvent(kernelevents[0]);
 
             old_frontier_vertices = h_new_frontier_size;
             d2hevents[0] = _clMemcpyD2H(d_new_frontier_size, sizeof(int), &h_new_frontier_size);
             d2hevents[1] = _clMemcpyD2H(d_amount_frontier_edges, sizeof(int), &frontier_edges);
 #ifdef PROFILING
-            _clWait(2, d2hevents);
-            _clFinish();
-
-            for(int i = 0; i < 2; i++) {
-                cl_ulong time_start;
-                cl_ulong time_end;
-
-                clGetEventProfilingInfo(d2hevents[i], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
-                clGetEventProfilingInfo(d2hevents[i], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
-
-                d2h_timer += time_end - time_start;
-            }
-
+            waitAndTime(2, d2hevents, &d2h_timer);
 #endif
             clReleaseEvent(d2hevents[0]);
             clReleaseEvent(d2hevents[1]);
@@ -335,16 +322,7 @@ void run_bfs_opencl(int no_of_nodes,
         d2hevent[0] = _clMemcpyD2H(d_cost, no_of_nodes * sizeof(int), h_cost);
 
 #ifdef PROFILING
-        _clWait(1, d2hevent);
-        _clFinish();
-
-        cl_ulong time_start;
-        cl_ulong time_end;
-
-        clGetEventProfilingInfo(d2hevent[0], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
-        clGetEventProfilingInfo(d2hevent[0], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
-
-        d2h_timer += time_end - time_start;
+        waitAndTime(1, d2hevent, &d2h_timer);
 #endif
         clReleaseEvent(d2hevent[0]);
     }

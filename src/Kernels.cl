@@ -1,10 +1,5 @@
-/* ============================================================
-//--cambine: kernel funtion of Breadth-First-Search
-//--author:	created by Jianbin Fang
-//--date:	06/12/2010
-============================================================ */
 #pragma OPENCL EXTENSION cl_khr_byte_addressable_store: enable
-//Structure to hold a node information
+
 typedef struct{
     int starting;
     int no_of_edges;
@@ -36,8 +31,8 @@ __kernel void BFS_TD(const __global Node* g_graph_nodes,
                 g_new_frontier[old] = id;
                 g_graph_visited[id] = true;
 
-                Node node = g_graph_nodes[id];
-                atomic_add(g_amount_frontier_edges, node.no_of_edges); 
+                Node target = g_graph_nodes[id];
+                atomic_add(g_amount_frontier_edges, target.no_of_edges); 
             }
         }
     }	
