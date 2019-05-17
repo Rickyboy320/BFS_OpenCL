@@ -1,6 +1,5 @@
 #pragma OPENCL EXTENSION cl_khr_byte_addressable_store: enable
 
-//Structure to hold a node information
 typedef struct{
     int starting;
     int no_of_edges;

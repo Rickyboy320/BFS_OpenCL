@@ -119,14 +119,14 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
     try
     {
         //--1 transfer data from host to device
-        d_nodes = _clMallocRW(no_of_nodes * sizeof(Node), h_nodes);
-        d_edges = _clMallocRW(no_of_edges * sizeof(int), h_edges);
-        d_mask = _clMallocRW(no_of_nodes * sizeof(char), h_mask);
-        d_new_mask = _clMallocRW(no_of_nodes * sizeof(char), h_new_mask);
-        d_visited = _clMallocRW(no_of_nodes * sizeof(char), h_visited);
+        d_nodes = _clMallocRW(no_of_nodes * sizeof(Node));
+        d_edges = _clMallocRW(no_of_edges * sizeof(int));
+        d_mask = _clMallocRW(no_of_nodes * sizeof(char));
+        d_new_mask = _clMallocRW(no_of_nodes * sizeof(char));
+        d_visited = _clMallocRW(no_of_nodes * sizeof(char));
 
-        d_cost = _clMallocRW(no_of_nodes * sizeof(int), h_cost);
-        d_done = _clMallocRW(sizeof(char), &h_done);
+        d_cost = _clMallocRW(no_of_nodes * sizeof(int));
+        d_done = _clMallocRW(sizeof(char));
 
         cl_event h2dpreevents[6];
         h2dpreevents[0] = _clMemcpyH2D(d_nodes, no_of_nodes * sizeof(Node), h_nodes);
