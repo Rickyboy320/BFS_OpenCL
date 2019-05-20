@@ -80,7 +80,7 @@ void compare_results(const datatype *cpuResults, const datatype *clResults, cons
     return ;
 }
 
-void cmdParams(int argc, char *argv[], int* source, int* iterations, int* work_group_size, int* device_id_inuse, bool* cpu)
+void cmdParams(int argc, char *argv[], int* source, int* iterations, int* work_group_size, int* device_id_inuse, bool* cpu, bool* undirected)
 {
     for (int i = 2; i < argc; i++)
     {
@@ -122,6 +122,12 @@ void cmdParams(int argc, char *argv[], int* source, int* iterations, int* work_g
             *cpu = true;
 #ifdef VERBOSE
             printf("Attempting to use CPU instead of GPU.\n");
+#endif
+            break;
+        case 'u':
+            *undirected = true;
+#ifdef VERBOSE
+            printf("Forcing undirected graph type.\n");
 #endif
             break;
         case 's':
