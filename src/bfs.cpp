@@ -14,6 +14,7 @@
 
 int iterations = 1;
 int source = 0;
+bool undirected = false;
 
 typedef unsigned long long timestamp_t;
 
@@ -268,7 +269,7 @@ int main(int argc, char *argv[])
             exit(0);
         }
 
-        _clCmdParams(argc, argv, &source, &iterations);
+        _clCmdParams(argc, argv, &source, &iterations, &undirected);
 
         //Read in Graph from a file
         char *input_f = argv[1];
@@ -296,6 +297,10 @@ int main(int argc, char *argv[])
             exit(1);
         }
 
+        if(mm_is_symmetric(matcode)) {
+            undirected = true;
+        }
+
         // find out size of sparse matrix ....
         int N, nz;   
         if (mm_read_mtx_crd_size(fp, &no_of_nodes, &N, &nz) != 0)
@@ -314,6 +319,7 @@ int main(int argc, char *argv[])
 
 #ifdef VERBOSE
         printf("Amt nodes: %d\n", no_of_nodes);
+        printf("Undirected: %s\n", undirected ? "True" : "False");
 #endif
         std::unordered_set<int>* construction_set = new std::unordered_set<int>[no_of_nodes];
 
@@ -329,7 +335,9 @@ int main(int argc, char *argv[])
                 y--;
 
                 construction_set[x].insert(y);
-                construction_set[y].insert(x);
+                if(undirected) {
+                    construction_set[y].insert(x);
+                }
             }
         }
         else
@@ -344,7 +352,9 @@ int main(int argc, char *argv[])
                 y--;
 
                 construction_set[x].insert(y);
-                construction_set[y].insert(x);
+                if(undirected) {
+                    construction_set[y].insert(x);
+                }
             }
         }
         
