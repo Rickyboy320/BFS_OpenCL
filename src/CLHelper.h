@@ -99,7 +99,7 @@ string FileToString(const string fileName)
 //---------------------------------------
 //Read command line parameters
 //
-void _clCmdParams(int argc, char *argv[], int* source, int* iterations)
+void _clCmdParams(int argc, char *argv[], int* source, int* iterations, bool* undirected)
 {
     for (int i = 2; i < argc; i++)
     {
@@ -141,6 +141,12 @@ void _clCmdParams(int argc, char *argv[], int* source, int* iterations)
             cpu = true;
 #ifdef VERBOSE
             printf("Attempting to use CPU instead of GPU.\n");
+#endif
+            break;
+        case 'u':
+            *undirected = true;
+#ifdef VERBOSE
+            printf("Forcing undirected graph type.\n");
 #endif
             break;
         case 's':
