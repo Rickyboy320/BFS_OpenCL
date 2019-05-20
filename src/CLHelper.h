@@ -445,6 +445,8 @@ void _clInit()
 #endif
 
     char name[128];
+    char driver_version[128];
+    char opencl_version[128];
     cl_device_type device_type;
     cl_uint clockfreq;
     cl_uint computeunits;
@@ -455,17 +457,19 @@ void _clInit()
     cl_int result3 = clGetDeviceInfo(oclHandles.devices[DEVICE_ID_inuse], CL_DEVICE_MAX_CLOCK_FREQUENCY, sizeof(clockfreq), &clockfreq, NULL);
     cl_int result4 = clGetDeviceInfo(oclHandles.devices[DEVICE_ID_inuse], CL_DEVICE_MAX_COMPUTE_UNITS, sizeof(computeunits), &computeunits, NULL);
     cl_int result5 = clGetDeviceInfo(oclHandles.devices[DEVICE_ID_inuse], CL_DEVICE_MAX_WORK_GROUP_SIZE, sizeof(groupsize), &groupsize, NULL);
+    cl_int result6 = clGetDeviceInfo(oclHandles.devices[DEVICE_ID_inuse], CL_DRIVER_VERSION, sizeof(driver_version), &driver_version, NULL);
+    cl_int result7 = clGetDeviceInfo(oclHandles.devices[DEVICE_ID_inuse], CL_DEVICE_VERSION, sizeof(opencl_version), &opencl_version, NULL);
 
-    if(result1 != CL_SUCCESS || result2 != CL_SUCCESS || result3 != CL_SUCCESS || result4 != CL_SUCCESS || result5 != CL_SUCCESS)
+    if(result1 != CL_SUCCESS || result2 != CL_SUCCESS || result3 != CL_SUCCESS || result4 != CL_SUCCESS || result5 != CL_SUCCESS || result6 != CL_SUCCESS || result7 != CL_SUCCESS)
     {
-        printf("Succ: %d, invalidval: %d, 1: %d, 2: %d, 3: %d, 4: %d, 5: %d\n", CL_SUCCESS, CL_INVALID_VALUE, result1, result2, result3, result4, result5);
+        printf("Succ: %d, invalidval: %d, 1: %d, 2: %d, 3: %d, 4: %d, 5: %d, 6: %d, 7: %d\n", CL_SUCCESS, CL_INVALID_VALUE, result1, result2, result3, result4, result5, result6, result7);
         string errorMsg = "InitCL()::Error: Could not retrieve full device information";
         throw(errorMsg);
     }
 
     const char* type = device_type == CL_DEVICE_TYPE_CPU ? "CPU" : device_type == CL_DEVICE_TYPE_GPU ? "GPU" : "Other";
 
-    printf("Name: %s, vendor: %s, type: %s. Max clock frequency: %u MHz. Parallel cores: %u. Max work group size: %lu\n", name, vendor, type, clockfreq, computeunits, groupsize);
+    printf("Name: %s, vendor: %s, type: %s, version: %s, opencl: %s. Max clock frequency: %u MHz. Parallel cores: %u. Max work group size: %lu\n", name, vendor, type, driver_version, opencl_version, clockfreq, computeunits, groupsize);
 }
 
 //---------------------------------------
