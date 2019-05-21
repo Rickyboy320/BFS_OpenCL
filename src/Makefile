@@ -2,7 +2,7 @@ CC = g++
 
 SRC = bfs.cpp matrixmarket/mmio.c
 
-CC_FLAGS = -g -O3
+CC_FLAGS = -O3
 
 EXE = ../bin/bfs
 
@@ -22,7 +22,7 @@ res:$(SRC)
 	$(CC) $(CC_FLAGS) $(SRC) -o $(EXE) -lOpenCL -D RES_MSG
 
 debug: $(SRC)
-	$(CC) $(CC_FLAGS) $(SRC) -o $(EXE) -lOpenCL -D ERRMSG -D PTX_MSG -D RES_MSG -D PROFILING -D VERBOSE
+	$(CC) $(CC_FLAGS) -g $(SRC) -o $(EXE) -lOpenCL -D ERRMSG -D PTX_MSG -D RES_MSG -D PROFILING -D VERBOSE
 
 results: $(SRC)
 	$(CC) $(CC_FLAGS) $(SRC) -o $(EXE) -lOpenCL -D NO_CHECK -D PROFILING
