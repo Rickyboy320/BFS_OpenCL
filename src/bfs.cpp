@@ -150,7 +150,6 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
         //--2 invoke kernel
         int amtloops = 0;
         bool top_down = true;
-        bool has_been_bottom = false;
 
         cl_event h2devents[3];
         cl_event kernelevents[2];
@@ -171,9 +170,8 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
 
             bool shrinking = frontier_vertices < old_frontier_vertices;
 
-            if (!has_been_bottom && top_down && frontier_edges > unexplored_edges / ALPHA && !shrinking) {
+            if (top_down && frontier_edges > unexplored_edges / ALPHA && !shrinking) {
                 top_down = false;
-                has_been_bottom = true;
             } else if(!top_down && frontier_vertices < no_of_nodes / BETA && shrinking) {
                 top_down = true;
             }
