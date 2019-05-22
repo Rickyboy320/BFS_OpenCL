@@ -231,7 +231,8 @@ void run_bfs_cuda(int no_of_nodes,
 #endif
                 // Reset new bitmap
                 run_zero(grid, threads, d_graph_mask, no_of_nodes);
-                run_convert_TD(grid, threads, d_graph_frontier, d_graph_frontier_size, d_graph_mask);
+                dim3 fastgrid((int)ceil(h_new_frontier_size / (double)num_of_threads_per_block), 1, 1);
+                run_convert_TD(fastgrid, threads, d_graph_frontier, d_graph_frontier_size, d_graph_mask);
             } else if(!top_down && h_new_frontier_size < no_of_nodes / BETA && shrinking) {
                 top_down = true;
 #ifdef VERBOSE
@@ -246,7 +247,8 @@ void run_bfs_cuda(int no_of_nodes,
 
             //--kernel 0 or 1 (topdown / bottom-up)
             if(top_down) {
-                run_TD(grid, threads, d_graph_nodes, d_graph_frontier, d_graph_frontier_size, d_graph_edges, d_new_frontier, d_new_frontier_size, d_graph_visited, d_amount_frontier_edges, d_cost, no_of_nodes);
+                dim3 fastgrid((int)ceil(h_new_frontier_size / (double)num_of_threads_per_block), 1, 1);
+                run_TD(fastgrid, threads, d_graph_nodes, d_graph_frontier, d_graph_frontier_size, d_graph_edges, d_new_frontier, d_new_frontier_size, d_graph_visited, d_amount_frontier_edges, d_cost, no_of_nodes);
             } else {
                 // Reset new bitmap
                 run_zero(grid, threads, d_new_mask, no_of_nodes);
