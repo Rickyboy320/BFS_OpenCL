@@ -88,6 +88,25 @@ void run_bfs_cpu(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edges, 
 #endif
 }
 
+void waitAndTime(int count, cl_event* events, string* strings, cl_ulong* timer)
+{
+    _clWait(count, events);
+    _clFinish();
+       
+    for(int i = 0; i < count; i++) {
+        cl_ulong time_start;
+        cl_ulong time_end;
+
+        clGetEventProfilingInfo(events[i], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
+        clGetEventProfilingInfo(events[i], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
+        *timer += time_end - time_start;
+            
+#ifdef VERBOSE
+        printf("%s took %0.8f\n", strings[i].c_str(), (time_end - time_start) / 1000000.0);
+#endif
+    }
+}
+
 void waitAndTime(int count, cl_event* events, cl_ulong* timer)
 {
     _clWait(count, events);
@@ -145,6 +164,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
 
         cl_event h2devents[1];
         cl_event kernelevents[1];
+        string kernelstrings[1];
         cl_event d2hevents[1];
         do
         {
@@ -171,9 +191,10 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
             _clSetArgs(kernel_id, kernel_idx++, &no_of_nodes, sizeof(int));
 
             //int work_items = no_of_nodes;
+            kernelstrings[0] = "Top_Down cycle w/ size: unknown"; 
             kernelevents[0] = _clInvokeKernel(kernel_id, no_of_nodes, work_group_size);
 #ifdef PROFILING
-            waitAndTime(1, kernelevents, &kernel_timer);
+            waitAndTime(1, kernelevents, kernelstrings, &kernel_timer);
 #endif
             clReleaseEvent(kernelevents[0]);
 
