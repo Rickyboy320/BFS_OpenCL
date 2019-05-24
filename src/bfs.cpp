@@ -90,6 +90,25 @@ void run_bfs_cpu(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edges, 
 #endif
 }
 
+void waitAndTime(int count, cl_event* events, string* strings, cl_ulong* timer)
+{
+    _clWait(count, events);
+    _clFinish();
+       
+    for(int i = 0; i < count; i++) {
+        cl_ulong time_start;
+        cl_ulong time_end;
+
+        clGetEventProfilingInfo(events[i], CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
+        clGetEventProfilingInfo(events[i], CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
+        *timer += time_end - time_start;
+            
+#ifdef VERBOSE
+        printf("%s took %0.8f\n", strings[i].c_str(), (time_end - time_start) / 1000000.0);
+#endif
+    }
+}
+
 void waitAndTime(int count, cl_event* events, cl_ulong* timer)
 {
     _clWait(count, events);
@@ -154,6 +173,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
 
         cl_event h2devents[3];
         cl_event kernelevents[2];
+        string kernelstrings[2];
         cl_event d2hevents[3];
         do
         {
@@ -192,8 +212,9 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
             _clSetArgs(kernel_id, kernel_idx++, &no_of_nodes, sizeof(int));
 
             //int work_items = no_of_nodes;
+            kernelstrings[0] = (top_down ? "Top-Down cycle w/ size: " : "Bottom-Up cycle w/ size: ") + std::to_string(frontier_vertices);
             kernelevents[0] = _clInvokeKernel(kernel_id, no_of_nodes, work_group_size);
-            
+
             kernel_id = 2;
             kernel_idx = 0;
             _clSetArgs(kernel_id, kernel_idx++, d_nodes);
@@ -204,10 +225,11 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
             _clSetArgs(kernel_id, kernel_idx++, d_frontier_vertices);
             _clSetArgs(kernel_id, kernel_idx++, d_frontier_edges);
            
+            kernelstrings[1] = "Update cycle";
             kernelevents[1] = _clInvokeKernel(kernel_id, no_of_nodes, work_group_size);
 
 #ifdef PROFILING
-            waitAndTime(2, kernelevents, &kernel_timer);
+            waitAndTime(2, kernelevents, kernelstrings, &kernel_timer);
 #endif
             clReleaseEvent(kernelevents[0]);
             clReleaseEvent(kernelevents[1]);
