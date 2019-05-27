@@ -234,6 +234,10 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
 
             old_frontier_vertices = frontier_vertices;
 
+#ifdef VERBOSE
+            printf("Edges traversed: %d\n", frontier_edges);
+#endif
+
             d2hevents[0] = _clMemcpyD2H(d_frontier_vertices, sizeof(int), &frontier_vertices);
             d2hevents[1] = _clMemcpyD2H(d_frontier_edges, sizeof(int), &frontier_edges);
 #ifdef PROFILING
