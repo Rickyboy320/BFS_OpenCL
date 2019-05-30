@@ -80,8 +80,10 @@ __kernel void BFS_UPDATE(const __global Node* g_graph_nodes,
             g_graph_visited[tid]=true;
             g_updating_graph_mask[tid]=false;
 
-            atomic_add(frontier_edges, g_graph_nodes[tid].no_of_edges);
-            atomic_inc(frontier_vertices);
+            //atomic_add(frontier_edges, g_graph_nodes[tid].no_of_edges);
+            //atomic_inc(frontier_vertices);
+            *frontier_edges += g_graph_nodes[tid].no_of_edges;
+            *frontier_vertices = 1;
         }
     }
     //TODO: potential optimization: no longer compute frontier_edges and frontier_vertices  after BU has been initiated.

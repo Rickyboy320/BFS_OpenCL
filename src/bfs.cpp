@@ -174,6 +174,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
         cl_event kernelevents[2];
         string kernelstrings[2];
         cl_event d2hevents[3];
+
         do
         {
             amtloops++;
@@ -188,11 +189,9 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
             clReleaseEvent(h2devents[0]);
             clReleaseEvent(h2devents[1]);
 
-            bool shrinking = frontier_vertices < old_frontier_vertices;
-
-            if (top_down && frontier_edges > unexplored_edges / ALPHA && !shrinking) {
+            if (amtloops >= 3 && amtloops < 6) {
                 top_down = false;
-            } else if(!top_down && frontier_vertices < no_of_nodes / BETA && shrinking) {
+            } else {
                 top_down = true;
             }
 
@@ -210,7 +209,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
             _clSetArgs(kernel_id, kernel_idx++, &no_of_nodes, sizeof(int));
 
             //int work_items = no_of_nodes;
-            kernelstrings[0] = (top_down ? "Top-Down cycle w/ size: " : "Bottom-Up cycle w/ size: ") + std::to_string(frontier_vertices);
+            kernelstrings[0] = (top_down ? "Top-Down cycle w/ size: unknown" : "Bottom-Up cycle w/ size: unknown");
             kernelevents[0] = _clInvokeKernel(kernel_id, no_of_nodes, work_group_size);
 
             kernel_id = 2;
@@ -231,8 +230,6 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
 #endif
             clReleaseEvent(kernelevents[0]);
             clReleaseEvent(kernelevents[1]);
-
-            old_frontier_vertices = frontier_vertices;
 
 #ifdef VERBOSE
             printf("Edges traversed: %d\n", frontier_edges);
