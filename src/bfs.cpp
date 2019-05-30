@@ -212,6 +212,12 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
             kernelstrings[0] = (top_down ? "Top-Down cycle w/ size: unknown" : "Bottom-Up cycle w/ size: unknown");
             kernelevents[0] = _clInvokeKernel(kernel_id, no_of_nodes, work_group_size);
 
+#ifdef PROFILING
+            waitAndTime(1, kernelevents, kernelstrings, &kernel_timer);
+#endif
+            clReleaseEvent(kernelevents[0]);
+
+
             kernel_id = 2;
             kernel_idx = 0;
             _clSetArgs(kernel_id, kernel_idx++, d_nodes);
@@ -222,14 +228,13 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
             _clSetArgs(kernel_id, kernel_idx++, d_frontier_vertices);
             _clSetArgs(kernel_id, kernel_idx++, d_frontier_edges);
            
-            kernelstrings[1] = "Update cycle";
-            kernelevents[1] = _clInvokeKernel(kernel_id, no_of_nodes, work_group_size);
+            kernelstrings[0] = "Update cycle";
+            kernelevents[0] = _clInvokeKernel(kernel_id, no_of_nodes, work_group_size);
 
 #ifdef PROFILING
-            waitAndTime(2, kernelevents, kernelstrings, &kernel_timer);
+            waitAndTime(1, kernelevents, kernelstrings, &kernel_timer);
 #endif
             clReleaseEvent(kernelevents[0]);
-            clReleaseEvent(kernelevents[1]);
 
 #ifdef VERBOSE
             printf("Edges traversed: %d\n", frontier_edges);
