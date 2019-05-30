@@ -66,25 +66,25 @@ __kernel void BFS_UPDATE(const __global Node* g_graph_nodes,
                         __global int* frontier_vertices,
                         __global int* frontier_edges) {
     int tid = get_global_id(0);
-    if(tid < no_of_nodes)
+    if(tid < no_of_nodes && g_updating_graph_mask[tid])
     {
-        if(g_graph_mask[tid])
-        {
-            g_graph_mask[tid] = false;
-            return;
-        }
-        
-        if(g_updating_graph_mask[tid])
-        {
-            g_graph_mask[tid]=true;
-            g_graph_visited[tid]=true;
-            g_updating_graph_mask[tid]=false;
-
-            //atomic_add(frontier_edges, g_graph_nodes[tid].no_of_edges);
-            //atomic_inc(frontier_vertices);
-            *frontier_edges += g_graph_nodes[tid].no_of_edges;
-            *frontier_vertices = 1;
-        }
+        g_graph_mask[tid]=true;
+        g_graph_visited[tid]=true;
+        g_updating_graph_mask[tid]=false;
+            
+        //atomic_add(frontier_edges, g_graph_nodes[tid].no_of_edges);
+        //atomic_inc(frontier_vertices);
+        *frontier_edges += g_graph_nodes[tid].no_of_edges;
+        *frontier_vertices = 1;
     }
-    //TODO: potential optimization: no longer compute frontier_edges and frontier_vertices  after BU has been initiated.
+}
+
+__kernel void BFS_ZERO(__global char* g_graph_mask,
+                       const int no_of_nodes)
+{
+    int tid = get_global_id(0);
+    if(tid < no_of_nodes && g_graph_mask[tid])
+    {
+        g_graph_mask[tid] = false;
+    }
 }

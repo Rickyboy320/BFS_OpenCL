@@ -217,6 +217,17 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
 #endif
             clReleaseEvent(kernelevents[0]);
 
+            kernel_id = 3;
+            kernel_idx = 0;
+            _clSetArgs(kernel_id, kernel_idx++, d_mask);
+            _clSetArgs(kernel_id, kernel_idx++, &no_of_nodes, sizeof(int));
+            kernelstrings[0] = "Zero cycle";
+            kernelevents[0] = _clInvokeKernel(kernel_id, no_of_nodes, work_group_size);
+
+#ifdef PROFILING
+            waitAndTime(1, kernelevents, kernelstrings, &kernel_timer);
+#endif
+            clReleaseEvent(kernelevents[0]);
 
             kernel_id = 2;
             kernel_idx = 0;
