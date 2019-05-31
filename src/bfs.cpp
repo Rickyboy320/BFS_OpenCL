@@ -221,6 +221,8 @@ void run_bfs_cuda(int no_of_nodes,
             float msecTotal = 0.0f;
             checkErrors(cudaEventElapsedTime(&msecTotal, start, stop));
             h2d_timer += msecTotal;
+
+            checkErrors(cudaEventRecord(start, NULL));
 #endif
 
             bool shrinking = h_new_frontier_size < old_frontier_vertices;
