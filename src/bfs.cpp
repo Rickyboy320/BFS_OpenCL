@@ -18,11 +18,12 @@ bool undirected = false;
 
 typedef unsigned long long timestamp_t;
 
+/** Microseconds */
 static timestamp_t get_timestamp ()
 {
     struct timeval now;
     gettimeofday(&now, NULL);
-    return  now.tv_usec + (timestamp_t)now.tv_sec * 1000000;
+    return now.tv_usec + (timestamp_t)now.tv_sec * 1000000;
 }
 
 struct Node
@@ -122,6 +123,13 @@ void waitAndTime(int count, cl_event* events, cl_ulong* timer)
     }
 }
 
+void waitAndTime(cl_ulong* timer, timestamp_t start)
+{
+    _clFinish();
+    *timer += (cl_ulong) (get_timestamp() - start) * 1000;
+    printf("Time taken: %lu\n", (cl_ulong) (get_timestamp() - start));
+}
+
 //----------------------------------------------------------
 //--breadth first search on the OpenCL device
 //----------------------------------------------------------
@@ -133,31 +141,26 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
 #ifdef PROFILING
     cl_ulong kernel_timer = 0;
     cl_ulong h2d_timer = 0;
+    cl_ulong h2d_runtime = 0;
     cl_ulong d2h_timer = 0;
 #endif
 
     try
     {
-        //--1 transfer data from host to device
-        d_nodes = _clMallocRW(no_of_nodes * sizeof(Node));
-        d_edges = _clMallocRW(no_of_edges * sizeof(int));
-        d_mask = _clMallocRW(no_of_nodes * sizeof(char));
-        d_new_mask = _clMallocRW(no_of_nodes * sizeof(char));
-        d_visited = _clMallocRW(no_of_nodes * sizeof(char));
+        timestamp_t start = get_timestamp();
 
-        d_cost = _clMallocRW(no_of_nodes * sizeof(int));
-        d_done = _clMallocRW(sizeof(char));
+        //--1 transfer data from host to device 
+        d_nodes = _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, no_of_nodes * sizeof(Node), h_nodes);
+        d_edges = _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, no_of_edges * sizeof(int), h_edges);
+        d_mask = _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, no_of_nodes * sizeof(char), h_mask);
+        d_new_mask = _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, no_of_nodes * sizeof(char), h_new_mask);
+        d_visited = _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, no_of_nodes * sizeof(char), h_visited);
 
-        cl_event h2dpreevents[6];
-        h2dpreevents[0] = _clMemcpyH2D(d_nodes, no_of_nodes * sizeof(Node), h_nodes);
-        h2dpreevents[1] = _clMemcpyH2D(d_edges, no_of_edges * sizeof(int), h_edges);
-        h2dpreevents[2] = _clMemcpyH2D(d_mask, no_of_nodes * sizeof(char), h_mask);
-        h2dpreevents[3] = _clMemcpyH2D(d_new_mask, no_of_nodes * sizeof(char), h_new_mask);
-        h2dpreevents[4] = _clMemcpyH2D(d_visited, no_of_nodes * sizeof(char), h_visited);
-        h2dpreevents[5] = _clMemcpyH2D(d_cost, no_of_nodes * sizeof(int), h_cost);
+        d_cost = _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, no_of_nodes * sizeof(int), h_cost);
+        d_done = _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, sizeof(char), &h_done);
 
 #ifdef PROFILING
-        waitAndTime(6, h2dpreevents, &h2d_timer);
+        waitAndTime(&h2d_timer, start);
 #endif
         //--2 invoke kernel
         int amtloops = 0;
@@ -174,7 +177,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
             h2devents[0] = _clMemcpyH2D(d_done, sizeof(char), &h_done);
 
 #ifdef PROFILING
-            waitAndTime(1, h2devents, &h2d_timer);
+            waitAndTime(1, h2devents, &h2d_runtime);
 #endif
             clReleaseEvent(h2devents[0]);
 
@@ -240,7 +243,9 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
 #ifdef PROFILING
     
     #ifdef VERBOSE
-    printf("\tTotal h2d time is: %0.3f milliseconds \n", (h2d_timer) / 1000000.0);
+    printf("\tInitial h2d time is: %0.3f milliseconds \n", (h2d_timer) / 1000000.0);
+    printf("\tRuntime h2d time is: %0.3f milliseconds \n", (h2d_runtime) / 1000000.0);
+    printf("\tTotal h2d time is: %0.3f milliseconds \n", (h2d_timer + h2d_runtime) / 1000000.0);
     printf("\tTotal kernel time is: %0.3f milliseconds \n", (kernel_timer) / 1000000.0);
     printf("\tTotal d2h time is: %0.3f milliseconds \n", (d2h_timer) / 1000000.0);
     printf("\tTotal time: %0.3f milliseconds \n", (h2d_timer + kernel_timer + d2h_timer) / 1000000.0);
