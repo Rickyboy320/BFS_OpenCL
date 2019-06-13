@@ -139,16 +139,16 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
     try
     {
         //--1 transfer data from host to device
-        d_nodes = _clMallocRW(no_of_nodes * sizeof(Node));
-        d_edges = _clMallocRW(no_of_edges * sizeof(int));
-        d_mask = _clMallocRW(no_of_nodes * sizeof(char));
-        d_new_mask = _clMallocRW(no_of_nodes * sizeof(char));
-        d_visited = _clMallocRW(no_of_nodes * sizeof(char));
+        d_nodes = _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, no_of_nodes * sizeof(Node), h_nodes);
+        d_edges = _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, no_of_edges * sizeof(int), h_edges);
+        d_mask = _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, no_of_nodes * sizeof(char), h_mask);
+        d_new_mask = _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, no_of_nodes * sizeof(char), h_new_mask);
+        d_visited = _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, no_of_nodes * sizeof(char), h_visited);
 
-        d_cost = _clMallocRW(no_of_nodes * sizeof(int));
-        d_done = _clMallocRW(sizeof(char));
+        d_cost = _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, no_of_nodes * sizeof(int), h_cost);
+        d_done = _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, sizeof(char), &h_done);
 
-        cl_event h2dpreevents[6];
+        /** cl_event h2dpreevents[6];
         h2dpreevents[0] = _clMemcpyH2D(d_nodes, no_of_nodes * sizeof(Node), h_nodes);
         h2dpreevents[1] = _clMemcpyH2D(d_edges, no_of_edges * sizeof(int), h_edges);
         h2dpreevents[2] = _clMemcpyH2D(d_mask, no_of_nodes * sizeof(char), h_mask);
@@ -159,6 +159,7 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
 #ifdef PROFILING
         waitAndTime(6, h2dpreevents, &h2d_timer);
 #endif
+        */
         //--2 invoke kernel
         int amtloops = 0;
 
@@ -171,13 +172,13 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
             amtloops++;
 
             h_done = true; 
-            h2devents[0] = _clMemcpyH2D(d_done, sizeof(char), &h_done);
+            /**h2devents[0] = _clMemcpyH2D(d_done, sizeof(char), &h_done);
 
 #ifdef PROFILING
             waitAndTime(1, h2devents, &h2d_timer);
 #endif
             clReleaseEvent(h2devents[0]);
-
+            */
             //--kernel 0
             int kernel_id = 0;
             int kernel_idx = 0;
@@ -198,12 +199,13 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
 #endif
             clReleaseEvent(kernelevents[0]);
 
+/**
             d2hevents[0] = _clMemcpyD2H(d_done, sizeof(char), &h_done);
 #ifdef PROFILING
             waitAndTime(1, d2hevents, &d2h_timer);
 #endif
             clReleaseEvent(d2hevents[0]);
-            
+*/            
             cl_mem tmp = d_mask;
             d_mask = d_new_mask;
             d_new_mask = tmp;
@@ -215,13 +217,14 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
         _clFinish();
 
         //--3 transfer data from device to host
-        cl_event d2hevent[1];
+        /**cl_event d2hevent[1];
         d2hevent[0] = _clMemcpyD2H(d_cost, no_of_nodes * sizeof(int), h_cost);
 
 #ifdef PROFILING
         waitAndTime(1, d2hevent, &d2h_timer);
 #endif
         clReleaseEvent(d2hevent[0]);
+        */
     }
     catch (std::string msg)
     {
