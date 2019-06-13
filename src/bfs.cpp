@@ -4,8 +4,10 @@
 #include <string>
 #include <cstring>
 #include <unordered_set>
+#include <math.h>
 #include <sys/time.h>
 
+#include "size.h"
 #include "CLHelper.h"
 #include "util.h"
 #include "matrixmarket/mmio.h"
@@ -130,6 +132,10 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
     char h_done = true;
     cl_mem d_nodes, d_edges, d_mask, d_new_mask, d_visited, d_cost, d_done;
 
+#ifdef VERBOSE
+    printf("Kernel size: %d\n", KERNEL_SIZE);
+#endif
+
 #ifdef PROFILING
     cl_ulong kernel_timer = 0;
     cl_ulong h2d_timer = 0;
@@ -191,8 +197,8 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
             _clSetArgs(kernel_id, kernel_idx++, &no_of_nodes, sizeof(int));
 
             //int work_items = no_of_nodes;
-            kernelstrings[0] = "Top_Down cycle w/ size: unknown"; 
-            kernelevents[0] = _clInvokeKernel(kernel_id, no_of_nodes, work_group_size);
+            kernelstrings[0] = "Top_Down cycle w/ size: unknown; amt instances: " + std::to_string(ceil((float) no_of_nodes / KERNEL_SIZE)) + "\n"; 
+            kernelevents[0] = _clInvokeKernel(kernel_id, ceil((float) no_of_nodes / KERNEL_SIZE), work_group_size);
 #ifdef PROFILING
             waitAndTime(1, kernelevents, kernelstrings, &kernel_timer);
 #endif

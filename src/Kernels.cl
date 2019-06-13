@@ -1,4 +1,5 @@
 #pragma OPENCL EXTENSION cl_khr_byte_addressable_store: enable
+#include "size.h"
 
 typedef struct{
     int starting;
@@ -13,20 +14,24 @@ __kernel void BFS_1(const __global Node* g_nodes,
                     __global int* g_cost, 
                     __global char* done,
                     const int no_of_nodes){
-    int tid = get_global_id(0);
-    if(tid < no_of_nodes && g_mask[tid]) 
+    int offset = get_global_id(0);
+    for(int index = 0; index < KERNEL_SIZE; index++)
     {
-        g_mask[tid]=false;
-        for(int i = g_nodes[tid].starting; i < g_nodes[tid].starting + g_nodes[tid].no_of_edges; i++) 
+        int tid = offset * KERNEL_SIZE + index;
+        if(tid < no_of_nodes && g_mask[tid]) 
         {
-            int id = g_edges[i];
-            if(!g_visited[id])
+            g_mask[tid]=false;
+            for(int i = g_nodes[tid].starting; i < g_nodes[tid].starting + g_nodes[tid].no_of_edges; i++) 
             {
-                g_cost[id] = g_cost[tid] + 1;
-                g_new_mask[id] = true;
-                g_visited[id] = true;
-                *done = false;
+                int id = g_edges[i];
+                if(!g_visited[id])
+                {
+                    g_cost[id] = g_cost[tid] + 1;
+                    g_new_mask[id] = true;
+                    g_visited[id] = true;
+                    *done = false;
+                }
             }
-        }
-    }	
+        }	
+    }
 }
