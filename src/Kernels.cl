@@ -30,3 +30,19 @@ __kernel void BFS_1(const __global Node* g_nodes,
         }
     }	
 }
+
+__kernel void EMP(const __global Node* g_nodes,
+                    const __global int* g_edges,
+                    __global char* g_mask, 
+                    __global char* g_new_mask, 
+                    __global char* g_visited, 
+                    __global int* g_cost, 
+                    __global char* done,
+                    const int no_of_nodes)
+{
+    if(*done == false) {
+        *done = true;
+        return;
+    }
+    *done = false;
+}

@@ -123,11 +123,22 @@ void waitAndTime(int count, cl_event* events, cl_ulong* timer)
     }
 }
 
-void waitAndTime(cl_ulong* timer, timestamp_t start)
+void waitAndTime(cl_ulong* timer, timestamp_t start, cl_event event)
 {
     _clFinish();
     *timer += (cl_ulong) (get_timestamp() - start) * 1000;
-    printf("Time taken: %lu\n", (cl_ulong) (get_timestamp() - start));
+    printf("Time taken: %lu\n", (cl_ulong) (get_timestamp() - start) * 1000);
+
+    if(event != NULL)
+    {
+        cl_ulong time_start;
+        cl_ulong time_end;
+
+        clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
+        clGetEventProfilingInfo(event, CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
+        *timer -= time_end - time_start;
+        printf("Kernel time: %lu\n", time_end - time_start);
+    }
 }
 
 //----------------------------------------------------------
@@ -159,8 +170,22 @@ void run_bfs_opencl(int no_of_nodes, Node *h_nodes, int no_of_edges, int *h_edge
         d_cost = _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, no_of_nodes * sizeof(int), h_cost);
         d_done = _clCreateBuffer(CL_MEM_READ_WRITE | CL_MEM_USE_HOST_PTR, sizeof(char), &h_done);
 
+        // To measure 'forced' sync (there doesnt seem to be a way to wait for createbuffer other than forcing a kernel...)
+        int kernel_id = 1;
+        int kernel_idx = 0;
+        _clSetArgs(kernel_id, kernel_idx++, d_nodes);
+        _clSetArgs(kernel_id, kernel_idx++, d_edges);
+        _clSetArgs(kernel_id, kernel_idx++, d_mask);
+        _clSetArgs(kernel_id, kernel_idx++, d_new_mask);
+        _clSetArgs(kernel_id, kernel_idx++, d_visited);
+        _clSetArgs(kernel_id, kernel_idx++, d_cost);
+        _clSetArgs(kernel_id, kernel_idx++, d_done);
+        _clSetArgs(kernel_id, kernel_idx++, &no_of_nodes, sizeof(int));
+
+        cl_event event = _clInvokeKernel(1, 1, 1);
+        //cl_event event = NULL;
 #ifdef PROFILING
-        waitAndTime(&h2d_timer, start);
+        waitAndTime(&h2d_timer, start, event);
 #endif
         //--2 invoke kernel
         int amtloops = 0;
