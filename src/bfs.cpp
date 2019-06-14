@@ -410,6 +410,9 @@ int main(int argc, char *argv[])
             for (int j = 0; j < no_of_nodes; j++)
             {
                 h_cost[i][j] = -1;
+                h_mask[j] = false;
+                h_new_mask[j] = false;
+                h_visited[j] = false;
             }
 
     #ifdef VERBOSE
