@@ -12,13 +12,13 @@ Naming conventions for the results are as follows:
 'sizes_xxxx.pdf' shows the influence of differing work-group sizes on the performance of a specific graph.  
 'zero_xxxx.pdf' shows a breakdown of H2D, kernel and D2H times for the GPU and the CPU for a specific graph.  
 
-Source code for each implementation is on its own branch:
-'Unmodified' is the master branch;  
-'Datastructure' is the datastruct branch;  
-'Direction-optimizing' is the direction-optimized branch;  
-'Datastructure + Direction-optimizing' is the better_direction branch;  
+Source code for each implementation is on its own branch:  
+'Unmodified' is the `master` branch;  
+'Datastructure' is the `datastruct` branch;  
+'Direction-optimizing' is the `direction-optimized` branch;  
+'Datastructure + Direction-optimizing' is the `better_direction` branch;  
 
-Additionally, the CUDA ports are in the 'cuda_master' and 'cuda_better_direction' branches.
+Additionally, the CUDA ports are in the `cuda_master` and `cuda_better_direction` branches.
 
-The 'zero-copy' and 'zero-copy-2' branches are for the zero-copy specialization. The former breaks portability with the GPU, but the latter recovers this.
-Finally, the 'kernel-items' branch allows for differing the kernel workload.
+The `zero-copy` and `zero-copy-2` branches are for the zero-copy specialization. The former breaks portability with the GPU, but the latter recovers this.
+Finally, the `kernel-items` branch allows for differing the kernel workload.
